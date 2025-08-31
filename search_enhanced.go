@@ -10,7 +10,7 @@ import (
 )
 
 // SearchFilesEnhanced searches for files with enhanced features
-func SearchFilesEnhanced(repoPath string, keywords []string, searchMode string, includeFilename bool, contextLines int, maxResults int) ([]SearchResult, error) {
+func SearchFilesEnhanced(repoPath string, keywords []string, searchMode string, includeFilename bool, contextLines int, includePatterns, excludePatterns []string, maxResults int) ([]SearchResult, error) {
 	// Validate workspace path
 	validPath, err := ValidateWorkspacePath(repoPath)
 	if err != nil {
@@ -29,14 +29,14 @@ func SearchFilesEnhanced(repoPath string, keywords []string, searchMode string, 
 	var allResults []SearchResult
 	
 	// Search in file contents
-	contentResults, err := searchInContent(repoPath, keywords, searchMode, contextLines)
+	contentResults, err := searchInContent(repoPath, keywords, searchMode, contextLines, includePatterns, excludePatterns)
 	if err == nil {
 		allResults = append(allResults, contentResults...)
 	}
 	
 	// Search in filenames if requested
 	if includeFilename {
-		filenameResults, err := searchInFilenames(repoPath, keywords, searchMode)
+		filenameResults, err := searchInFilenames(repoPath, keywords, searchMode, includePatterns, excludePatterns)
 		if err == nil {
 			allResults = append(allResults, filenameResults...)
 		}
@@ -52,7 +52,7 @@ func SearchFilesEnhanced(repoPath string, keywords []string, searchMode string, 
 }
 
 // searchInContent searches for keywords in file contents
-func searchInContent(repoPath string, keywords []string, searchMode string, contextLines int) ([]SearchResult, error) {
+func searchInContent(repoPath string, keywords []string, searchMode string, contextLines int, includePatterns, excludePatterns []string) ([]SearchResult, error) {
 	if len(keywords) == 0 {
 		return []SearchResult{}, nil
 	}
@@ -80,7 +80,9 @@ func searchInContent(repoPath string, keywords []string, searchMode string, cont
 			
 			if err == nil {
 				keywordResults := parseGrepOutput(string(output), "content", contextLines > 0)
-				results = append(results, keywordResults...)
+				// Filter results based on include/exclude patterns
+				filteredResults := filterResultsByPatterns(keywordResults, includePatterns, excludePatterns)
+				results = append(results, filteredResults...)
 			}
 		}
 	} else {
@@ -95,6 +97,8 @@ func searchInContent(repoPath string, keywords []string, searchMode string, cont
 			
 			if err == nil {
 				results = parseGrepOutput(string(output), "content", contextLines > 0)
+				// Filter results based on include/exclude patterns
+				results = filterResultsByPatterns(results, includePatterns, excludePatterns)
 			}
 		} else {
 			// Multiple keywords - implement AND logic by filtering results
@@ -105,6 +109,8 @@ func searchInContent(repoPath string, keywords []string, searchMode string, cont
 			
 			if err == nil {
 				results = parseGrepOutput(string(output), "content", contextLines > 0)
+				// Filter results based on include/exclude patterns
+				results = filterResultsByPatterns(results, includePatterns, excludePatterns)
 				// Filter results to only include files that contain all keywords
 				results = filterResultsByAllKeywords(repoPath, results, keywords[1:])
 			}
@@ -115,7 +121,7 @@ func searchInContent(repoPath string, keywords []string, searchMode string, cont
 }
 
 // searchInFilenames searches for keywords in filenames
-func searchInFilenames(repoPath string, keywords []string, searchMode string) ([]SearchResult, error) {
+func searchInFilenames(repoPath string, keywords []string, searchMode string, includePatterns, excludePatterns []string) ([]SearchResult, error) {
 	// Use git ls-files to get all tracked files
 	cmd := exec.Command("git", "ls-files")
 	cmd.Dir = repoPath
@@ -131,6 +137,11 @@ func searchInFilenames(repoPath string, keywords []string, searchMode string) ([
 	for scanner.Scan() {
 		filePath := strings.TrimSpace(scanner.Text())
 		if filePath == "" {
+			continue
+		}
+		
+		// Check if file should be included based on patterns
+		if !shouldIncludeFile(filePath, includePatterns, excludePatterns) {
 			continue
 		}
 		
@@ -282,4 +293,17 @@ func removeDuplicateResults(results []SearchResult) []SearchResult {
 	}
 	
 	return unique
+}
+
+// filterResultsByPatterns filters search results based on include/exclude patterns
+func filterResultsByPatterns(results []SearchResult, includePatterns, excludePatterns []string) []SearchResult {
+	var filtered []SearchResult
+	
+	for _, result := range results {
+		if shouldIncludeFile(result.Path, includePatterns, excludePatterns) {
+			filtered = append(filtered, result)
+		}
+	}
+	
+	return filtered
 }

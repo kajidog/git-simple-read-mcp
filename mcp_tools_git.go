@@ -32,27 +32,32 @@ type SwitchBranchParams struct {
 
 // SearchFilesParams parameters for search_files tool
 type SearchFilesParams struct {
-	Repository      string   `json:"repository"`
-	Keywords        []string `json:"keywords"`
-	SearchMode      string   `json:"search_mode,omitempty"`      // "and" or "or", defaults to "and"
-	IncludeFilename bool     `json:"include_filename,omitempty"` // search in filenames too, defaults to false
-	ContextLines    int      `json:"context_lines,omitempty"`    // number of context lines before/after match, 0=no context
-	Limit           int      `json:"limit,omitempty"`
+	Repository       string   `json:"repository"`
+	Keywords         []string `json:"keywords"`
+	SearchMode       string   `json:"search_mode,omitempty"`       // "and" or "or", defaults to "and"
+	IncludeFilename  bool     `json:"include_filename,omitempty"`  // search in filenames too, defaults to false
+	ContextLines     int      `json:"context_lines,omitempty"`     // number of context lines before/after match, 0=no context
+	IncludePatterns  []string `json:"include_patterns,omitempty"`  // file patterns to include (glob)
+	ExcludePatterns  []string `json:"exclude_patterns,omitempty"`  // file patterns to exclude (glob)
+	Limit            int      `json:"limit,omitempty"`
 }
 
 // ListFilesParams parameters for list_files tool
 type ListFilesParams struct {
-	Repository string `json:"repository"`
-	Directory  string `json:"directory,omitempty"`
-	Recursive  bool   `json:"recursive,omitempty"`
-	Limit      int    `json:"limit,omitempty"`
+	Repository      string   `json:"repository"`
+	Directory       string   `json:"directory,omitempty"`
+	Recursive       bool     `json:"recursive,omitempty"`
+	IncludePatterns []string `json:"include_patterns,omitempty"` // file patterns to include (glob)
+	ExcludePatterns []string `json:"exclude_patterns,omitempty"` // file patterns to exclude (glob)
+	Limit           int      `json:"limit,omitempty"`
 }
 
 // GetFileContentParams parameters for get_file_content tool
 type GetFileContentParams struct {
-	Repository string `json:"repository"`
-	FilePath   string `json:"file_path"`
-	MaxLines   int    `json:"max_lines,omitempty"`
+	Repository string   `json:"repository"`
+	FilePath   string   `json:"file_path,omitempty"`   // Single file path (for backward compatibility)
+	FilePaths  []string `json:"file_paths,omitempty"`  // Multiple file paths
+	MaxLines   int      `json:"max_lines,omitempty"`   // Max lines per file
 }
 
 // CloneRepositoryParams parameters for clone_repository tool
@@ -261,7 +266,7 @@ func handleSearchFiles(ctx context.Context, req *mcp.CallToolRequest, args Searc
 		searchMode = "and"
 	}
 
-	results, err := SearchFiles(args.Repository, args.Keywords, searchMode, args.IncludeFilename, args.ContextLines, limit)
+	results, err := SearchFiles(args.Repository, args.Keywords, searchMode, args.IncludeFilename, args.ContextLines, args.IncludePatterns, args.ExcludePatterns, limit)
 	if err != nil {
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Search failed: %v", err)}},
@@ -294,7 +299,7 @@ func handleListFiles(ctx context.Context, req *mcp.CallToolRequest, args ListFil
 		limit = 50
 	}
 
-	files, err := ListFiles(args.Repository, directory, args.Recursive, limit)
+	files, err := ListFiles(args.Repository, directory, args.Recursive, args.IncludePatterns, args.ExcludePatterns, limit)
 	if err != nil {
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Failed to list files: %v", err)}},
@@ -316,9 +321,15 @@ func handleGetFileContent(ctx context.Context, req *mcp.CallToolRequest, args Ge
 		}, nil, nil
 	}
 
-	if args.FilePath == "" {
+	// Determine which file paths to use (backward compatibility)
+	var filePaths []string
+	if len(args.FilePaths) > 0 {
+		filePaths = args.FilePaths
+	} else if args.FilePath != "" {
+		filePaths = []string{args.FilePath}
+	} else {
 		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: "Error: file path is required"}},
+			Content: []mcp.Content{&mcp.TextContent{Text: "Error: file path(s) required"}},
 			IsError: true,
 		}, nil, nil
 	}
@@ -329,18 +340,35 @@ func handleGetFileContent(ctx context.Context, req *mcp.CallToolRequest, args Ge
 		maxLines = 100
 	}
 
-	content, err := GetFileContent(args.Repository, args.FilePath, maxLines)
-	if err != nil {
+	if len(filePaths) == 1 {
+		// Single file - maintain backward compatibility
+		content, err := GetFileContent(args.Repository, filePaths[0], maxLines)
+		if err != nil {
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Failed to get file content: %v", err)}},
+				IsError: true,
+			}, nil, nil
+		}
+
+		resultText := fmt.Sprintf("Content of %s:\n```\n%s```", filePaths[0], content)
 		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Failed to get file content: %v", err)}},
-			IsError: true,
+			Content: []mcp.Content{&mcp.TextContent{Text: resultText}},
+		}, nil, nil
+	} else {
+		// Multiple files
+		results, err := GetMultipleFileContents(args.Repository, filePaths, maxLines)
+		if err != nil {
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Failed to get file contents: %v", err)}},
+				IsError: true,
+			}, nil, nil
+		}
+
+		resultText := formatMultipleFileContents(results)
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: resultText}},
 		}, nil, nil
 	}
-
-	resultText := fmt.Sprintf("Content of %s:\n```\n%s```", args.FilePath, content)
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{&mcp.TextContent{Text: resultText}},
-	}, nil, nil
 }
 
 func handleCloneRepository(ctx context.Context, req *mcp.CallToolRequest, args CloneRepositoryParams) (*mcp.CallToolResult, any, error) {
@@ -552,17 +580,34 @@ func formatFileList(files []FileInfo, directory string, recursive bool, limit in
 		if file.IsDir {
 			result.WriteString(fmt.Sprintf("📁 %s/\n", file.Path))
 		} else {
-			sizeStr := ""
-			if file.Size > 0 {
-				if file.Size < 1024 {
-					sizeStr = fmt.Sprintf(" (%d bytes)", file.Size)
-				} else if file.Size < 1024*1024 {
-					sizeStr = fmt.Sprintf(" (%.1f KB)", float64(file.Size)/1024)
-				} else {
-					sizeStr = fmt.Sprintf(" (%.1f MB)", float64(file.Size)/(1024*1024))
+			infoStr := ""
+			if file.Size > 0 || file.CharCount > 0 {
+				var parts []string
+				
+				// Add file size
+				if file.Size > 0 {
+					if file.Size < 1024 {
+						parts = append(parts, fmt.Sprintf("%d bytes", file.Size))
+					} else if file.Size < 1024*1024 {
+						parts = append(parts, fmt.Sprintf("%.1f KB", float64(file.Size)/1024))
+					} else {
+						parts = append(parts, fmt.Sprintf("%.1f MB", float64(file.Size)/(1024*1024)))
+					}
+				}
+				
+				// Add character and line count
+				if file.CharCount > 0 {
+					parts = append(parts, fmt.Sprintf("%d chars", file.CharCount))
+				}
+				if file.LineCount > 0 {
+					parts = append(parts, fmt.Sprintf("%d lines", file.LineCount))
+				}
+				
+				if len(parts) > 0 {
+					infoStr = fmt.Sprintf(" (%s)", strings.Join(parts, ", "))
 				}
 			}
-			result.WriteString(fmt.Sprintf("📄 %s%s\n", file.Path, sizeStr))
+			result.WriteString(fmt.Sprintf("📄 %s%s\n", file.Path, infoStr))
 		}
 	}
 	
@@ -590,6 +635,34 @@ func formatWorkspaceRepositories(repositories []string, workspaceDir string) str
 	}
 	
 	result.WriteString(fmt.Sprintf("\nTotal: %d repositories\n", len(repositories)))
+	
+	return result.String()
+}
+
+func formatMultipleFileContents(results []FileContentResult) string {
+	var result strings.Builder
+	
+	result.WriteString(fmt.Sprintf("Content of %d files:\n", len(results)))
+	result.WriteString(strings.Repeat("=", 50) + "\n\n")
+	
+	for i, fileResult := range results {
+		if i > 0 {
+			result.WriteString("\n" + strings.Repeat("-", 40) + "\n\n")
+		}
+		
+		result.WriteString(fmt.Sprintf("📄 %s\n", fileResult.FilePath))
+		
+		if fileResult.Error != "" {
+			result.WriteString(fmt.Sprintf("❌ Error: %s\n", fileResult.Error))
+		} else {
+			result.WriteString("```\n")
+			result.WriteString(fileResult.Content)
+			if !strings.HasSuffix(fileResult.Content, "\n") {
+				result.WriteString("\n")
+			}
+			result.WriteString("```\n")
+		}
+	}
 	
 	return result.String()
 }

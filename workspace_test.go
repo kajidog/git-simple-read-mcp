@@ -426,11 +426,11 @@ func TestWorkspacePathValidationInOperations(t *testing.T) {
 				return err
 			},
 			func(path string) error {
-				_, err := SearchFiles(path, []string{"test"}, "and", false, 0, 10)
+				_, err := SearchFiles(path, []string{"test"}, "and", false, 0, nil, nil, 10)
 				return err
 			},
 			func(path string) error {
-				_, err := ListFiles(path, ".", false, 10)
+				_, err := ListFiles(path, ".", false, nil, nil, 10)
 				return err
 			},
 			func(path string) error {

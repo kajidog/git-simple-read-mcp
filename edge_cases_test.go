@@ -46,7 +46,7 @@ func TestEdgeCasesAndErrorHandling(t *testing.T) {
 		defer os.Chmod(restrictedDir, 0755) // Cleanup
 		
 		// Test should handle permission errors gracefully
-		files, err := ListFiles(repo.Path, "restricted", false, 10)
+		files, err := ListFiles(repo.Path, "restricted", false, nil, nil, 10)
 		// Should either succeed with empty list or fail gracefully
 		if err != nil {
 			t.Logf("Permission error handled: %v", err)
@@ -80,7 +80,7 @@ func TestEdgeCasesAndErrorHandling(t *testing.T) {
 		repo.AddCommit("Add files with special characters")
 		
 		// Test file listing
-		files, err := ListFiles(repo.Path, ".", false, 50)
+		files, err := ListFiles(repo.Path, ".", false, nil, nil, 50)
 		if err != nil {
 			t.Fatalf("Failed to list files with special characters: %v", err)
 		}
@@ -167,7 +167,7 @@ func TestEdgeCasesAndErrorHandling(t *testing.T) {
 		}
 		
 		// Test listing empty directory
-		files, err := ListFiles(repo.Path, "empty_dir", false, 10)
+		files, err := ListFiles(repo.Path, "empty_dir", false, nil, nil, 10)
 		if err != nil {
 			t.Errorf("Failed to list empty directory: %v", err)
 		}
@@ -258,7 +258,7 @@ func TestEdgeCasesAndErrorHandling(t *testing.T) {
 		repo.runGitCommand("commit", "-m", "Add symbolic link")
 		
 		// Test listing files with symlinks
-		files, err := ListFiles(repo.Path, ".", false, 20)
+		files, err := ListFiles(repo.Path, ".", false, nil, nil, 20)
 		if err != nil {
 			t.Errorf("Failed to list files with symlinks: %v", err)
 		} else {
@@ -478,7 +478,7 @@ func TestErrorRecovery(t *testing.T) {
 		}
 		
 		// Should still list accessible files
-		files, err := ListFiles(repo.Path, ".", true, 50)
+		files, err := ListFiles(repo.Path, ".", true, nil, nil, 50)
 		// May succeed with partial results or fail completely
 		if err != nil {
 			t.Logf("Partial failure handled: %v", err)
@@ -560,7 +560,7 @@ func TestBoundaryConditions(t *testing.T) {
 		repo.AddCommit("Add boundary test files")
 		
 		// Test with limit exactly matching file count
-		files, err := ListFiles(repo.Path, "boundary", false, 50)
+		files, err := ListFiles(repo.Path, "boundary", false, nil, nil, 50)
 		if err != nil {
 			t.Errorf("Failed to list files at boundary: %v", err)
 		}
@@ -569,7 +569,7 @@ func TestBoundaryConditions(t *testing.T) {
 		}
 		
 		// Test with limit one less than file count
-		files, err = ListFiles(repo.Path, "boundary", false, 49)
+		files, err = ListFiles(repo.Path, "boundary", false, nil, nil, 49)
 		if err != nil {
 			t.Errorf("Failed to list files below boundary: %v", err)
 		}

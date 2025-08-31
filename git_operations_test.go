@@ -249,7 +249,7 @@ func TestSearchFiles(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			repo := CreateTestRepositoryWithContent(t)
 			
-			results, err := SearchFiles(repo.Path, tt.keywords, "and", false, 0, tt.maxResults)
+			results, err := SearchFiles(repo.Path, tt.keywords, "and", false, 0, nil, nil, tt.maxResults)
 			
 			if tt.expectError {
 				if err == nil {
@@ -330,7 +330,7 @@ func TestListFiles(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			repo := CreateTestRepositoryWithContent(t)
 			
-			files, err := ListFiles(repo.Path, tt.dirPath, tt.recursive, tt.maxResults)
+			files, err := ListFiles(repo.Path, tt.dirPath, tt.recursive, nil, nil, tt.maxResults)
 			
 			if tt.expectError {
 				if err == nil {
@@ -516,7 +516,7 @@ func TestEdgeCases(t *testing.T) {
 		repo.AddCommit("Add many files")
 		
 		// Test listing files with limit
-		files, err := ListFiles(repo.Path, "large", false, 10)
+		files, err := ListFiles(repo.Path, "large", false, nil, nil, 10)
 		if err != nil {
 			t.Fatalf("Failed to list files: %v", err)
 		}

@@ -28,7 +28,7 @@ func TestPerformanceWithLargeRepository(t *testing.T) {
 		start := time.Now()
 		
 		// Test file listing performance
-		files, err := ListFiles(repo.Path, ".", true, 200)
+		files, err := ListFiles(repo.Path, ".", true, nil, nil, 200)
 		if err != nil {
 			t.Fatalf("Failed to list files: %v", err)
 		}
@@ -55,7 +55,7 @@ func TestPerformanceWithLargeRepository(t *testing.T) {
 		// Test pagination with different limits
 		limits := []int{10, 50, 100}
 		for _, limit := range limits {
-			files, err := ListFiles(repo.Path, "large", false, limit)
+			files, err := ListFiles(repo.Path, "large", false, nil, nil, limit)
 			if err != nil {
 				t.Fatalf("Failed to list files with limit %d: %v", limit, err)
 			}
@@ -86,7 +86,7 @@ func TestPerformanceWithLargeRepository(t *testing.T) {
 		start := time.Now()
 		
 		// Test search performance
-		results, err := SearchFiles(repo.Path, []string{"database"}, "and", false, 0, 50)
+		results, err := SearchFiles(repo.Path, []string{"database"}, "and", false, 0, nil, nil, 50)
 		if err != nil {
 			t.Fatalf("Failed to search files: %v", err)
 		}
@@ -175,7 +175,7 @@ func TestConcurrentOperations(t *testing.T) {
 		
 		for i := 0; i < concurrency; i++ {
 			go func(id int) {
-				files, err := ListFiles(repo.Path, ".", false, 20)
+				files, err := ListFiles(repo.Path, ".", false, nil, nil, 20)
 				if err != nil {
 					errors <- fmt.Errorf("goroutine %d failed: %v", id, err)
 					return
@@ -261,7 +261,7 @@ func BenchmarkOperations(b *testing.B) {
 	b.Run("ListFiles", func(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, err := ListFiles(repo.Path, ".", false, 20)
+			_, err := ListFiles(repo.Path, ".", false, nil, nil, 20)
 			if err != nil {
 				b.Fatalf("Benchmark failed: %v", err)
 			}
@@ -271,7 +271,7 @@ func BenchmarkOperations(b *testing.B) {
 	b.Run("SearchFiles", func(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, err := SearchFiles(repo.Path, []string{"database"}, "and", false, 0, 10)
+			_, err := SearchFiles(repo.Path, []string{"database"}, "and", false, 0, nil, nil, 10)
 			if err != nil {
 				b.Fatalf("Benchmark failed: %v", err)
 			}
@@ -358,7 +358,7 @@ func TestResourceLimits(t *testing.T) {
 		
 		for _, limit := range limits {
 			start := time.Now()
-			files, err := ListFiles(repo.Path, "massive", false, limit)
+			files, err := ListFiles(repo.Path, "massive", false, nil, nil, limit)
 			elapsed := time.Since(start)
 			
 			if err != nil {
@@ -393,7 +393,7 @@ func TestResourceLimits(t *testing.T) {
 		
 		// Test recursive listing
 		start := time.Now()
-		files, err := ListFiles(repo.Path, ".", true, 100)
+		files, err := ListFiles(repo.Path, ".", true, nil, nil, 100)
 		elapsed := time.Since(start)
 		
 		if err != nil {

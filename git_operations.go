@@ -46,11 +46,13 @@ type MatchLine struct {
 
 // FileInfo represents file or directory information
 type FileInfo struct {
-	Name    string `json:"name"`
-	Path    string `json:"path"`
-	IsDir   bool   `json:"is_dir"`
-	Size    int64  `json:"size,omitempty"`
-	ModTime time.Time `json:"mod_time,omitempty"`
+	Name      string    `json:"name"`
+	Path      string    `json:"path"`
+	IsDir     bool      `json:"is_dir"`
+	Size      int64     `json:"size,omitempty"`
+	ModTime   time.Time `json:"mod_time,omitempty"`
+	CharCount int       `json:"char_count,omitempty"`  // Character count for text files
+	LineCount int       `json:"line_count,omitempty"`  // Line count for text files
 }
 
 // GetRepositoryInfo retrieves basic repository information
@@ -196,12 +198,12 @@ func SwitchBranch(repoPath, branchName string) (string, error) {
 }
 
 // SearchFiles searches for files containing the specified keywords
-func SearchFiles(repoPath string, keywords []string, searchMode string, includeFilename bool, contextLines int, maxResults int) ([]SearchResult, error) {
-	return SearchFilesEnhanced(repoPath, keywords, searchMode, includeFilename, contextLines, maxResults)
+func SearchFiles(repoPath string, keywords []string, searchMode string, includeFilename bool, contextLines int, includePatterns, excludePatterns []string, maxResults int) ([]SearchResult, error) {
+	return SearchFilesEnhanced(repoPath, keywords, searchMode, includeFilename, contextLines, includePatterns, excludePatterns, maxResults)
 }
 
 // ListFiles lists files in the specified directory
-func ListFiles(repoPath, dirPath string, recursive bool, maxResults int) ([]FileInfo, error) {
+func ListFiles(repoPath, dirPath string, recursive bool, includePatterns, excludePatterns []string, maxResults int) ([]FileInfo, error) {
 	// Validate workspace path
 	validPath, err := ValidateWorkspacePath(repoPath)
 	if err != nil {
@@ -231,18 +233,35 @@ func ListFiles(repoPath, dirPath string, recursive bool, maxResults int) ([]File
 				return nil
 			}
 
+			// Check if file should be included based on patterns
+			if !shouldIncludeFile(relPath, includePatterns, excludePatterns) {
+				if d.IsDir() {
+					return nil // Skip directory contents but don't return SkipDir
+				}
+				return nil
+			}
+
 			info, err := d.Info()
 			if err != nil {
 				return nil
 			}
 
-			files = append(files, FileInfo{
+			fileInfo := FileInfo{
 				Name:    d.Name(),
 				Path:    relPath,
 				IsDir:   d.IsDir(),
 				Size:    info.Size(),
 				ModTime: info.ModTime(),
-			})
+			}
+
+			// Add character and line count for text files
+			if !d.IsDir() {
+				charCount, lineCount := countFileCharacters(path)
+				fileInfo.CharCount = charCount
+				fileInfo.LineCount = lineCount
+			}
+
+			files = append(files, fileInfo)
 
 			count++
 			if maxResults > 0 && count >= maxResults {
@@ -266,19 +285,35 @@ func ListFiles(repoPath, dirPath string, recursive bool, maxResults int) ([]File
 				break
 			}
 
+			relPath := filepath.Join(dirPath, entry.Name())
+			
+			// Check if file should be included based on patterns
+			if !shouldIncludeFile(relPath, includePatterns, excludePatterns) {
+				continue
+			}
+
 			info, err := entry.Info()
 			if err != nil {
 				continue
 			}
 
-			relPath := filepath.Join(dirPath, entry.Name())
-			files = append(files, FileInfo{
+			fileInfo := FileInfo{
 				Name:    entry.Name(),
 				Path:    relPath,
 				IsDir:   entry.IsDir(),
 				Size:    info.Size(),
 				ModTime: info.ModTime(),
-			})
+			}
+
+			// Add character and line count for text files
+			if !entry.IsDir() {
+				fullPath := filepath.Join(repoPath, relPath)
+				charCount, lineCount := countFileCharacters(fullPath)
+				fileInfo.CharCount = charCount
+				fileInfo.LineCount = lineCount
+			}
+
+			files = append(files, fileInfo)
 			count++
 		}
 	}
@@ -365,6 +400,13 @@ func extractRepoNameFromURL(repoURL string) (string, error) {
 	return repoName, nil
 }
 
+// FileContentResult represents the content of a single file
+type FileContentResult struct {
+	FilePath string `json:"file_path"`
+	Content  string `json:"content"`
+	Error    string `json:"error,omitempty"`
+}
+
 // GetFileContent reads the content of a file
 func GetFileContent(repoPath, filePath string, maxLines int) (string, error) {
 	// Validate workspace path
@@ -397,6 +439,35 @@ func GetFileContent(repoPath, filePath string, maxLines int) (string, error) {
 	}
 
 	return content.String(), nil
+}
+
+// GetMultipleFileContents reads the content of multiple files
+func GetMultipleFileContents(repoPath string, filePaths []string, maxLines int) ([]FileContentResult, error) {
+	// Validate workspace path
+	validPath, err := ValidateWorkspacePath(repoPath)
+	if err != nil {
+		return nil, err
+	}
+	repoPath = validPath
+
+	var results []FileContentResult
+
+	for _, filePath := range filePaths {
+		result := FileContentResult{
+			FilePath: filePath,
+		}
+
+		content, err := GetFileContent(repoPath, filePath, maxLines)
+		if err != nil {
+			result.Error = err.Error()
+		} else {
+			result.Content = content
+		}
+
+		results = append(results, result)
+	}
+
+	return results, nil
 }
 
 // Helper functions
@@ -552,4 +623,66 @@ func mergeResultsWithOR(repoPath string, existingResults []SearchResult, keyword
 	}
 	
 	return results
+}
+
+// File pattern matching helper functions
+
+// matchesPatterns checks if a file path matches any of the given patterns
+func matchesPatterns(filePath string, patterns []string) bool {
+	if len(patterns) == 0 {
+		return true // No patterns means match all
+	}
+	
+	for _, pattern := range patterns {
+		if matched, err := filepath.Match(pattern, filepath.Base(filePath)); err == nil && matched {
+			return true
+		}
+		// Also try matching against the full path
+		if matched, err := filepath.Match(pattern, filePath); err == nil && matched {
+			return true
+		}
+		// Support directory patterns like "*.go" or "src/*.go"
+		if strings.Contains(pattern, "/") {
+			if matched, err := filepath.Match(pattern, filePath); err == nil && matched {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// shouldIncludeFile determines if a file should be included based on include/exclude patterns
+func shouldIncludeFile(filePath string, includePatterns, excludePatterns []string) bool {
+	// Check exclude patterns first
+	if len(excludePatterns) > 0 && matchesPatterns(filePath, excludePatterns) {
+		return false
+	}
+	
+	// Check include patterns
+	return matchesPatterns(filePath, includePatterns)
+}
+
+// countFileCharacters counts characters and lines in a text file
+func countFileCharacters(fullPath string) (int, int) {
+	file, err := os.Open(fullPath)
+	if err != nil {
+		return 0, 0
+	}
+	defer file.Close()
+
+	var charCount, lineCount int
+	scanner := bufio.NewScanner(file)
+	
+	for scanner.Scan() {
+		line := scanner.Text()
+		charCount += len(line) + 1 // +1 for newline character
+		lineCount++
+	}
+	
+	// If file doesn't end with newline, don't count the extra character
+	if lineCount > 0 && charCount > 0 {
+		charCount-- // Remove the last extra newline count
+	}
+	
+	return charCount, lineCount
 }
