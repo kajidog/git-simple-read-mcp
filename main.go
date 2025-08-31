@@ -9,10 +9,10 @@ import (
 
 func main() {
 	var rootCmd = &cobra.Command{
-		Use:   "git-remote-mcp",
-		Short: "MCP server for Git remote operations",
-		Long: `A Model Context Protocol (MCP) server that provides Git remote operations.
-Supports repository information, branch management, file operations, and search capabilities.`,
+		Use:   "git-simple-read-mcp",
+		Short: "MCP server for Git read operations",
+		Long: `A Model Context Protocol (MCP) server that provides Git read operations.
+Supports repository information, branch listing, file operations, and search capabilities.`,
 	}
 
 	// Add MCP server command

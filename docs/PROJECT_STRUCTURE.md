@@ -1,11 +1,11 @@
 # Project Structure
 
-This document describes the organization and structure of the git-remote-mcp project.
+This document describes the organization and structure of the git-simple-read-mcp project.
 
 ## Directory Structure
 
 ```
-git-remote-mcp/
+git-simple-read-mcp/
 ├── .claude/                    # Claude AI configuration
 ├── docs/                      # Documentation files
 │   ├── PROJECT_STRUCTURE.md   # This file
@@ -20,7 +20,7 @@ git-remote-mcp/
 ├── README.md                # Project overview and usage
 ├── docker-compose.yml       # Container orchestration
 ├── example-config.json      # Example configuration
-├── git-remote-mcp.service   # Systemd service file
+├── git-simple-read-mcp.service   # Systemd service file
 ├── go.mod                   # Go module definition
 ├── go.sum                   # Go dependencies
 └── *.go                     # Go source files (see below)
@@ -130,7 +130,7 @@ git-remote-mcp/
 - Volume mounting for workspace persistence
 
 ### System Service
-- `git-remote-mcp.service` for systemd integration
+- `git-simple-read-mcp.service` for systemd integration
 - Automated startup and lifecycle management
 - Log management and monitoring support
 

@@ -15,53 +15,53 @@ func TestPatternFilteringListFiles(t *testing.T) {
 	defer os.RemoveAll("./test_workspace_patterns")
 
 	repo := CreateTestRepository(t)
-	
+
 	// Create test files with different extensions
 	testFiles := map[string]string{
-		"main.go":         "package main\nfunc main() {}\n",
-		"utils.go":        "package utils\nfunc Helper() {}\n",
-		"config.json":     `{"name": "test"}`,
-		"README.md":       "# Test Project",
-		"src/app.js":      "console.log('hello');",
-		"src/styles.css":  "body { margin: 0; }",
+		"main.go":           "package main\nfunc main() {}\n",
+		"utils.go":          "package utils\nfunc Helper() {}\n",
+		"config.json":       `{"name": "test"}`,
+		"README.md":         "# Test Project",
+		"src/app.js":        "console.log('hello');",
+		"src/styles.css":    "body { margin: 0; }",
 		"test/main_test.go": "package main\nimport \"testing\"",
 	}
-	
+
 	for path, content := range testFiles {
 		repo.WriteFile(path, content)
 	}
 	repo.AddCommit("Add test files")
 
 	tests := []struct {
-		name            string
-		includePatterns []string
-		excludePatterns []string
-		expectedFiles   []string
+		name             string
+		includePatterns  []string
+		excludePatterns  []string
+		expectedFiles    []string
 		notExpectedFiles []string
 	}{
 		{
-			name:            "Include Go files only",
-			includePatterns: []string{"*.go"},
-			expectedFiles:   []string{"main.go", "utils.go", "test/main_test.go"},
+			name:             "Include Go files only",
+			includePatterns:  []string{"*.go"},
+			expectedFiles:    []string{"main.go", "utils.go", "test/main_test.go"},
 			notExpectedFiles: []string{"config.json", "README.md", "src/app.js"},
 		},
 		{
-			name:            "Exclude test files",
-			excludePatterns: []string{"*_test.go", "test/*"},
-			expectedFiles:   []string{"main.go", "utils.go", "config.json"},
+			name:             "Exclude test files",
+			excludePatterns:  []string{"*_test.go", "test/*"},
+			expectedFiles:    []string{"main.go", "utils.go", "config.json"},
 			notExpectedFiles: []string{"test/main_test.go"},
 		},
 		{
-			name:            "Include JS and CSS, exclude test directory",
-			includePatterns: []string{"*.js", "*.css"},
-			excludePatterns: []string{"test/*"},
-			expectedFiles:   []string{"src/app.js", "src/styles.css"},
+			name:             "Include JS and CSS, exclude test directory",
+			includePatterns:  []string{"*.js", "*.css"},
+			excludePatterns:  []string{"test/*"},
+			expectedFiles:    []string{"src/app.js", "src/styles.css"},
 			notExpectedFiles: []string{"main.go", "test/main_test.go"},
 		},
 		{
-			name:            "Include src directory files",
-			includePatterns: []string{"src/*"},
-			expectedFiles:   []string{"src/app.js", "src/styles.css"},
+			name:             "Include src directory files",
+			includePatterns:  []string{"src/*"},
+			expectedFiles:    []string{"src/app.js", "src/styles.css"},
 			notExpectedFiles: []string{"main.go", "config.json"},
 		},
 	}
@@ -108,7 +108,7 @@ func TestCharacterCountListFiles(t *testing.T) {
 	defer os.RemoveAll("./test_workspace_charcount")
 
 	repo := CreateTestRepository(t)
-	
+
 	// Create test files with known content
 	testFiles := map[string]struct {
 		content       string
@@ -136,7 +136,7 @@ func TestCharacterCountListFiles(t *testing.T) {
 			expectedLines: 3,
 		},
 	}
-	
+
 	for path, fileData := range testFiles {
 		repo.WriteFile(path, fileData.content)
 	}
@@ -170,49 +170,49 @@ func TestPatternFilteringSearchFiles(t *testing.T) {
 	defer os.RemoveAll("./test_workspace_search_patterns")
 
 	repo := CreateTestRepository(t)
-	
+
 	// Create test files with search content
 	testFiles := map[string]string{
-		"main.go":       "package main\nfunc main() {\n\tfmt.Println(\"hello world\")\n}",
-		"utils.go":      "package utils\nfunc Hello() string {\n\treturn \"hello\"\n}",
-		"config.json":   `{"message": "hello world"}`,
-		"README.md":     "# Hello World\nThis is a hello world example",
-		"src/app.js":    "console.log('hello world');",
+		"main.go":           "package main\nfunc main() {\n\tfmt.Println(\"hello world\")\n}",
+		"utils.go":          "package utils\nfunc Hello() string {\n\treturn \"hello\"\n}",
+		"config.json":       `{"message": "hello world"}`,
+		"README.md":         "# Hello World\nThis is a hello world example",
+		"src/app.js":        "console.log('hello world');",
 		"test/main_test.go": "package main\nimport \"testing\"\nfunc TestHello(t *testing.T) {}",
 	}
-	
+
 	for path, content := range testFiles {
 		repo.WriteFile(path, content)
 	}
 	repo.AddCommit("Add test files for search patterns")
 
 	tests := []struct {
-		name            string
-		keywords        []string
-		includePatterns []string
-		excludePatterns []string
-		expectedFiles   []string
+		name             string
+		keywords         []string
+		includePatterns  []string
+		excludePatterns  []string
+		expectedFiles    []string
 		notExpectedFiles []string
 	}{
 		{
-			name:            "Search 'hello' in Go files only",
-			keywords:        []string{"hello"},
-			includePatterns: []string{"*.go"},
-			expectedFiles:   []string{"main.go", "utils.go", "test/main_test.go"},
+			name:             "Search 'hello' in Go files only",
+			keywords:         []string{"hello"},
+			includePatterns:  []string{"*.go"},
+			expectedFiles:    []string{"main.go", "utils.go", "test/main_test.go"},
 			notExpectedFiles: []string{"config.json", "README.md", "src/app.js"},
 		},
 		{
-			name:            "Search 'hello' excluding test files",
-			keywords:        []string{"hello"},
-			excludePatterns: []string{"*_test.go", "test/*"},
-			expectedFiles:   []string{"main.go", "utils.go", "config.json", "README.md", "src/app.js"},
+			name:             "Search 'hello' excluding test files",
+			keywords:         []string{"hello"},
+			excludePatterns:  []string{"*_test.go", "test/*"},
+			expectedFiles:    []string{"main.go", "utils.go", "config.json", "README.md", "src/app.js"},
 			notExpectedFiles: []string{"test/main_test.go"},
 		},
 		{
-			name:            "Search 'world' in JSON and JS files",
-			keywords:        []string{"world"},
-			includePatterns: []string{"*.json", "*.js"},
-			expectedFiles:   []string{"config.json", "src/app.js"},
+			name:             "Search 'world' in JSON and JS files",
+			keywords:         []string{"world"},
+			includePatterns:  []string{"*.json", "*.js"},
+			expectedFiles:    []string{"config.json", "src/app.js"},
 			notExpectedFiles: []string{"main.go", "README.md"},
 		},
 	}
@@ -259,15 +259,15 @@ func TestMultipleFileContentRetrieval(t *testing.T) {
 	defer os.RemoveAll("./test_workspace_multifile")
 
 	repo := CreateTestRepository(t)
-	
+
 	// Create test files
 	testFiles := map[string]string{
-		"file1.txt": "Content of file 1\nSecond line",
-		"file2.txt": "Content of file 2",
-		"file3.txt": "Content of file 3\nLine 2\nLine 3",
+		"file1.txt":       "Content of file 1\nSecond line",
+		"file2.txt":       "Content of file 2",
+		"file3.txt":       "Content of file 3\nLine 2\nLine 3",
 		"nonexistent.txt": "", // This will not be created
 	}
-	
+
 	for path, content := range testFiles {
 		if path != "nonexistent.txt" {
 			repo.WriteFile(path, content)
@@ -369,7 +369,7 @@ func TestPatternHelperFunctions(t *testing.T) {
 		for _, tt := range tests {
 			result := matchesPatterns(tt.filePath, tt.patterns)
 			if result != tt.expected {
-				t.Errorf("matchesPatterns(%q, %v) = %v, want %v", 
+				t.Errorf("matchesPatterns(%q, %v) = %v, want %v",
 					tt.filePath, tt.patterns, result, tt.expected)
 			}
 		}
@@ -392,7 +392,7 @@ func TestPatternHelperFunctions(t *testing.T) {
 		for _, tt := range tests {
 			result := shouldIncludeFile(tt.filePath, tt.includePatterns, tt.excludePatterns)
 			if result != tt.expected {
-				t.Errorf("shouldIncludeFile(%q, %v, %v) = %v, want %v", 
+				t.Errorf("shouldIncludeFile(%q, %v, %v) = %v, want %v",
 					tt.filePath, tt.includePatterns, tt.excludePatterns, result, tt.expected)
 			}
 		}

@@ -1,4 +1,4 @@
-# Git Remote MCP Makefile
+# Git Simple Read MCP Makefile
 
 .PHONY: build test test-verbose test-short benchmark clean lint fmt help
 
@@ -7,8 +7,8 @@ all: build test
 
 # Build the application
 build:
-	@echo "Building git-remote-mcp..."
-	@go build -o git-remote-mcp .
+	@echo "Building git-simple-read-mcp..."
+	@go build -o git-simple-read-mcp .
 
 # Run all tests
 test:
@@ -72,7 +72,7 @@ fmt:
 # Clean build artifacts
 clean:
 	@echo "Cleaning build artifacts..."
-	@rm -f git-remote-mcp coverage.out coverage.html
+	@rm -f git-simple-read-mcp coverage.out coverage.html
 	@go clean
 
 # Initialize go modules
@@ -83,12 +83,12 @@ init:
 # Run the MCP server in stdio mode
 run-stdio:
 	@echo "Starting MCP server (stdio mode)..."
-	@./git-remote-mcp mcp
+	@./git-simple-read-mcp mcp
 
 # Run the MCP server in HTTP mode
 run-http:
 	@echo "Starting MCP server (HTTP mode on port 8080)..."
-	@./git-remote-mcp mcp --transport http --port 8080
+	@./git-simple-read-mcp mcp --transport http --port 8080
 
 # Install dependencies
 deps:

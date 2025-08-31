@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Build the application
 make build
 # or
-go build -o git-remote-mcp .
+go build -o git-simple-read-mcp .
 
 # Run all tests
 make test
@@ -39,14 +39,14 @@ make run-http         # HTTP transport on port 8080
 
 ## Architecture Overview
 
-This is a Go-based Model Context Protocol (MCP) server that provides Git remote operations with workspace security and enhanced file operations.
+This is a Go-based Model Context Protocol (MCP) server that provides Git read operations with workspace security and enhanced file operations.
 
 ### Core Architecture Layers
 
 1. **MCP Layer** (`mcp_server.go`, `mcp_tools_git.go`)
    - MCP server initialization with both stdio and HTTP transport support
    - Tool parameter definitions and handler registration
-   - 10 registered tools: repository info, cloning, branch operations, enhanced file operations, pattern-based search
+   - 10 registered tools: repository info, cloning, branch listing, enhanced file operations, pattern-based search
 
 2. **Workspace Security Layer** (`workspace.go`)
    - `WorkspaceManager` enforces all operations within a specified workspace directory
@@ -55,7 +55,7 @@ This is a Go-based Model Context Protocol (MCP) server that provides Git remote 
 
 3. **Git Operations Layer** (`git_operations.go`, `search_enhanced.go`)
    - Direct Git command execution via `os/exec`
-   - Core Git operations: info, pull, branches, enhanced file listing, content reading
+   - Core Git read operations: info, pull, branch listing, enhanced file listing, content reading
    - Pattern-based file filtering with glob support
    - Character and line counting for text files
    - Multiple file content retrieval with individual error handling

@@ -32,14 +32,14 @@ type SwitchBranchParams struct {
 
 // SearchFilesParams parameters for search_files tool
 type SearchFilesParams struct {
-	Repository       string   `json:"repository"`
-	Keywords         []string `json:"keywords"`
-	SearchMode       string   `json:"search_mode,omitempty"`       // "and" or "or", defaults to "and"
-	IncludeFilename  bool     `json:"include_filename,omitempty"`  // search in filenames too, defaults to false
-	ContextLines     int      `json:"context_lines,omitempty"`     // number of context lines before/after match, 0=no context
-	IncludePatterns  []string `json:"include_patterns,omitempty"`  // file patterns to include (glob)
-	ExcludePatterns  []string `json:"exclude_patterns,omitempty"`  // file patterns to exclude (glob)
-	Limit            int      `json:"limit,omitempty"`
+	Repository      string   `json:"repository"`
+	Keywords        []string `json:"keywords"`
+	SearchMode      string   `json:"search_mode,omitempty"`      // "and" or "or", defaults to "and"
+	IncludeFilename bool     `json:"include_filename,omitempty"` // search in filenames too, defaults to false
+	ContextLines    int      `json:"context_lines,omitempty"`    // number of context lines before/after match, 0=no context
+	IncludePatterns []string `json:"include_patterns,omitempty"` // file patterns to include (glob)
+	ExcludePatterns []string `json:"exclude_patterns,omitempty"` // file patterns to exclude (glob)
+	Limit           int      `json:"limit,omitempty"`
 }
 
 // ListFilesParams parameters for list_files tool
@@ -55,9 +55,9 @@ type ListFilesParams struct {
 // GetFileContentParams parameters for get_file_content tool
 type GetFileContentParams struct {
 	Repository string   `json:"repository"`
-	FilePath   string   `json:"file_path,omitempty"`   // Single file path (for backward compatibility)
-	FilePaths  []string `json:"file_paths,omitempty"`  // Multiple file paths
-	MaxLines   int      `json:"max_lines,omitempty"`   // Max lines per file
+	FilePath   string   `json:"file_path,omitempty"`  // Single file path (for backward compatibility)
+	FilePaths  []string `json:"file_paths,omitempty"` // Multiple file paths
+	MaxLines   int      `json:"max_lines,omitempty"`  // Max lines per file
 }
 
 // CloneRepositoryParams parameters for clone_repository tool
@@ -462,25 +462,25 @@ func handleRemoveRepository(ctx context.Context, req *mcp.CallToolRequest, args 
 
 func formatRepositoryInfo(info *RepositoryInfo) string {
 	var result strings.Builder
-	
+
 	result.WriteString(fmt.Sprintf("Repository Information for: %s\n", info.Path))
 	result.WriteString(strings.Repeat("=", 50) + "\n\n")
-	
+
 	result.WriteString(fmt.Sprintf("Current Branch: %s\n", info.CurrentBranch))
 	result.WriteString(fmt.Sprintf("Total Commits: %d\n", info.CommitCount))
-	
+
 	if !info.LastUpdate.IsZero() {
 		result.WriteString(fmt.Sprintf("Last Update: %s\n", info.LastUpdate.Format("2006-01-02 15:04:05")))
 	}
-	
+
 	if info.RemoteURL != "" {
 		result.WriteString(fmt.Sprintf("Remote URL: %s\n", info.RemoteURL))
 	}
-	
+
 	if info.License != "" {
 		result.WriteString(fmt.Sprintf("License File: %s\n", info.License))
 	}
-	
+
 	if info.ReadmeContent != "" {
 		result.WriteString("\nREADME Content:\n")
 		result.WriteString(strings.Repeat("-", 30) + "\n")
@@ -489,16 +489,16 @@ func formatRepositoryInfo(info *RepositoryInfo) string {
 			result.WriteString("\n")
 		}
 	}
-	
+
 	return result.String()
 }
 
 func formatBranches(branches []Branch, limited bool) string {
 	var result strings.Builder
-	
+
 	result.WriteString(fmt.Sprintf("Branches (%d):\n", len(branches)))
 	result.WriteString(strings.Repeat("-", 30) + "\n")
-	
+
 	for _, branch := range branches {
 		if branch.IsCurrent {
 			result.WriteString(fmt.Sprintf("* %s (current)\n", branch.Name))
@@ -506,17 +506,17 @@ func formatBranches(branches []Branch, limited bool) string {
 			result.WriteString(fmt.Sprintf("  %s\n", branch.Name))
 		}
 	}
-	
+
 	if limited {
 		result.WriteString("\n(Results may be limited)")
 	}
-	
+
 	return result.String()
 }
 
 func formatSearchResults(results []SearchResult, keywords []string, searchMode string) string {
 	var result strings.Builder
-	
+
 	var keywordStr string
 	if searchMode == "or" {
 		keywordStr = strings.Join(keywords, " OR ")
@@ -525,17 +525,17 @@ func formatSearchResults(results []SearchResult, keywords []string, searchMode s
 	}
 	result.WriteString(fmt.Sprintf("Search Results for: %s (%d files found)\n", keywordStr, len(results)))
 	result.WriteString(strings.Repeat("-", 50) + "\n")
-	
+
 	if len(results) == 0 {
 		result.WriteString("No files found matching the specified keywords.\n")
 		return result.String()
 	}
-	
+
 	for i, searchResult := range results {
 		if i > 0 {
 			result.WriteString("\n")
 		}
-		
+
 		// Show file path with match type
 		matchTypeStr := ""
 		if searchResult.MatchType == "filename" {
@@ -545,9 +545,9 @@ func formatSearchResults(results []SearchResult, keywords []string, searchMode s
 		} else if searchResult.MatchType == "both" {
 			matchTypeStr = " [filename + content match]"
 		}
-		
+
 		result.WriteString(fmt.Sprintf("📄 %s%s\n", searchResult.Path, matchTypeStr))
-		
+
 		// Show detailed matches
 		if len(searchResult.Matches) > 0 {
 			for _, match := range searchResult.Matches {
@@ -561,21 +561,21 @@ func formatSearchResults(results []SearchResult, keywords []string, searchMode s
 			}
 		}
 	}
-	
+
 	return result.String()
 }
 
 func formatFileList(files []FileInfo, directory string, recursive bool, limit int) string {
 	var result strings.Builder
-	
+
 	modeStr := "non-recursive"
 	if recursive {
 		modeStr = "recursive"
 	}
-	
+
 	result.WriteString(fmt.Sprintf("Files in '%s' (%s, %d items):\n", directory, modeStr, len(files)))
 	result.WriteString(strings.Repeat("-", 50) + "\n")
-	
+
 	for _, file := range files {
 		if file.IsDir {
 			result.WriteString(fmt.Sprintf("📁 %s/\n", file.Path))
@@ -583,7 +583,7 @@ func formatFileList(files []FileInfo, directory string, recursive bool, limit in
 			infoStr := ""
 			if file.Size > 0 || file.CharCount > 0 {
 				var parts []string
-				
+
 				// Add file size
 				if file.Size > 0 {
 					if file.Size < 1024 {
@@ -594,7 +594,7 @@ func formatFileList(files []FileInfo, directory string, recursive bool, limit in
 						parts = append(parts, fmt.Sprintf("%.1f MB", float64(file.Size)/(1024*1024)))
 					}
 				}
-				
+
 				// Add character and line count
 				if file.CharCount > 0 {
 					parts = append(parts, fmt.Sprintf("%d chars", file.CharCount))
@@ -602,7 +602,7 @@ func formatFileList(files []FileInfo, directory string, recursive bool, limit in
 				if file.LineCount > 0 {
 					parts = append(parts, fmt.Sprintf("%d lines", file.LineCount))
 				}
-				
+
 				if len(parts) > 0 {
 					infoStr = fmt.Sprintf(" (%s)", strings.Join(parts, ", "))
 				}
@@ -610,48 +610,48 @@ func formatFileList(files []FileInfo, directory string, recursive bool, limit in
 			result.WriteString(fmt.Sprintf("📄 %s%s\n", file.Path, infoStr))
 		}
 	}
-	
+
 	if len(files) == limit {
 		result.WriteString(fmt.Sprintf("\n(Limited to %d results)", limit))
 	}
-	
+
 	return result.String()
 }
 
 func formatWorkspaceRepositories(repositories []string, workspaceDir string) string {
 	var result strings.Builder
-	
+
 	result.WriteString(fmt.Sprintf("Workspace Repositories (%s):\n", workspaceDir))
 	result.WriteString(strings.Repeat("=", 50) + "\n\n")
-	
+
 	if len(repositories) == 0 {
 		result.WriteString("No repositories found in workspace.\n")
 		result.WriteString("Use 'clone_repository' tool to add repositories.\n")
 		return result.String()
 	}
-	
+
 	for _, repo := range repositories {
 		result.WriteString(fmt.Sprintf("📁 %s\n", repo))
 	}
-	
+
 	result.WriteString(fmt.Sprintf("\nTotal: %d repositories\n", len(repositories)))
-	
+
 	return result.String()
 }
 
 func formatMultipleFileContents(results []FileContentResult) string {
 	var result strings.Builder
-	
+
 	result.WriteString(fmt.Sprintf("Content of %d files:\n", len(results)))
 	result.WriteString(strings.Repeat("=", 50) + "\n\n")
-	
+
 	for i, fileResult := range results {
 		if i > 0 {
 			result.WriteString("\n" + strings.Repeat("-", 40) + "\n\n")
 		}
-		
+
 		result.WriteString(fmt.Sprintf("📄 %s\n", fileResult.FilePath))
-		
+
 		if fileResult.Error != "" {
 			result.WriteString(fmt.Sprintf("❌ Error: %s\n", fileResult.Error))
 		} else {
@@ -663,6 +663,6 @@ func formatMultipleFileContents(results []FileContentResult) string {
 			result.WriteString("```\n")
 		}
 	}
-	
+
 	return result.String()
 }

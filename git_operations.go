@@ -14,34 +14,34 @@ import (
 
 // RepositoryInfo contains basic repository information
 type RepositoryInfo struct {
-	Path            string    `json:"path"`
-	CommitCount     int       `json:"commit_count"`
-	LastUpdate      time.Time `json:"last_update"`
-	CurrentBranch   string    `json:"current_branch"`
-	License         string    `json:"license,omitempty"`
-	ReadmeContent   string    `json:"readme_content,omitempty"`
-	RemoteURL       string    `json:"remote_url,omitempty"`
+	Path          string    `json:"path"`
+	CommitCount   int       `json:"commit_count"`
+	LastUpdate    time.Time `json:"last_update"`
+	CurrentBranch string    `json:"current_branch"`
+	License       string    `json:"license,omitempty"`
+	ReadmeContent string    `json:"readme_content,omitempty"`
+	RemoteURL     string    `json:"remote_url,omitempty"`
 }
 
 // Branch represents a git branch
 type Branch struct {
-	Name      string `json:"name"`
-	IsCurrent bool   `json:"is_current"`
+	Name       string `json:"name"`
+	IsCurrent  bool   `json:"is_current"`
 	LastCommit string `json:"last_commit,omitempty"`
 }
 
 // SearchResult represents a file search result
 type SearchResult struct {
-	Path        string      `json:"path"`
-	MatchType   string      `json:"match_type,omitempty"`   // "content" or "filename"
-	Matches     []MatchLine `json:"matches,omitempty"`      // detailed match information
+	Path      string      `json:"path"`
+	MatchType string      `json:"match_type,omitempty"` // "content" or "filename"
+	Matches   []MatchLine `json:"matches,omitempty"`    // detailed match information
 }
 
 // MatchLine represents a single match within a file
 type MatchLine struct {
-	LineNumber int    `json:"line_number"`           // line number (0 for filename matches)
-	Content    string `json:"content"`               // the matching line content
-	Context    []string `json:"context,omitempty"`   // surrounding context lines
+	LineNumber int      `json:"line_number"`       // line number (0 for filename matches)
+	Content    string   `json:"content"`           // the matching line content
+	Context    []string `json:"context,omitempty"` // surrounding context lines
 }
 
 // FileInfo represents file or directory information
@@ -51,8 +51,8 @@ type FileInfo struct {
 	IsDir     bool      `json:"is_dir"`
 	Size      int64     `json:"size,omitempty"`
 	ModTime   time.Time `json:"mod_time,omitempty"`
-	CharCount int       `json:"char_count,omitempty"`  // Character count for text files
-	LineCount int       `json:"line_count,omitempty"`  // Line count for text files
+	CharCount int       `json:"char_count,omitempty"` // Character count for text files
+	LineCount int       `json:"line_count,omitempty"` // Line count for text files
 }
 
 // GetRepositoryInfo retrieves basic repository information
@@ -148,7 +148,7 @@ func ListBranches(repoPath string) ([]Branch, error) {
 
 	var branches []Branch
 	scanner := bufio.NewScanner(strings.NewReader(string(output)))
-	
+
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
@@ -212,7 +212,7 @@ func ListFiles(repoPath, dirPath string, recursive bool, includePatterns, exclud
 	repoPath = validPath
 
 	fullPath := filepath.Join(repoPath, dirPath)
-	
+
 	var files []FileInfo
 	count := 0
 
@@ -286,7 +286,7 @@ func ListFiles(repoPath, dirPath string, recursive bool, includePatterns, exclud
 			}
 
 			relPath := filepath.Join(dirPath, entry.Name())
-			
+
 			// Check if file should be included based on patterns
 			if !shouldIncludeFile(relPath, includePatterns, excludePatterns) {
 				continue
@@ -367,7 +367,7 @@ func extractRepoNameFromURL(repoURL string) (string, error) {
 	// git@github.com:user/repo.git
 	// https://github.com/user/repo
 	// etc.
-	
+
 	// Remove .git suffix if present
 	url := strings.TrimSuffix(repoURL, ".git")
 
@@ -378,7 +378,7 @@ func extractRepoNameFromURL(repoURL string) (string, error) {
 	}
 
 	repoName := parts[len(parts)-1]
-	
+
 	// Handle SSH URLs like git@github.com:user/repo
 	if strings.Contains(repoName, ":") {
 		colonParts := strings.Split(repoName, ":")
@@ -396,7 +396,7 @@ func extractRepoNameFromURL(repoURL string) (string, error) {
 	// Clean repository name (remove invalid characters for directory names)
 	repoName = strings.ReplaceAll(repoName, " ", "-")
 	repoName = strings.ReplaceAll(repoName, ":", "-")
-	
+
 	return repoName, nil
 }
 
@@ -417,7 +417,7 @@ func GetFileContent(repoPath, filePath string, maxLines int) (string, error) {
 	repoPath = validPath
 
 	fullPath := filepath.Join(repoPath, filePath)
-	
+
 	file, err := os.Open(fullPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to open file: %v", err)
@@ -487,7 +487,7 @@ func getCommitCount(repoPath string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	
+
 	count, err := strconv.Atoi(strings.TrimSpace(string(output)))
 	return count, err
 }
@@ -499,7 +499,7 @@ func getLastCommit(repoPath string) (time.Time, error) {
 	if err != nil {
 		return time.Time{}, err
 	}
-	
+
 	return time.Parse("2006-01-02 15:04:05 -0700", strings.TrimSpace(string(output)))
 }
 
@@ -510,7 +510,7 @@ func getCurrentBranch(repoPath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	
+
 	return strings.TrimSpace(string(output)), nil
 }
 
@@ -521,26 +521,26 @@ func getRemoteURL(repoPath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	
+
 	return strings.TrimSpace(string(output)), nil
 }
 
 func findLicenseFile(repoPath string) (string, error) {
 	licenseFiles := []string{"LICENSE", "LICENSE.txt", "LICENSE.md", "LICENCE", "LICENCE.txt", "LICENCE.md"}
-	
+
 	for _, filename := range licenseFiles {
 		path := filepath.Join(repoPath, filename)
 		if _, err := os.Stat(path); err == nil {
 			return filename, nil
 		}
 	}
-	
+
 	return "", fmt.Errorf("no license file found")
 }
 
 func findAndReadReadme(repoPath string) (string, error) {
 	readmeFiles := []string{"README.md", "README.txt", "README", "readme.md", "readme.txt", "readme"}
-	
+
 	for _, filename := range readmeFiles {
 		path := filepath.Join(repoPath, filename)
 		if _, err := os.Stat(path); err == nil {
@@ -550,34 +550,34 @@ func findAndReadReadme(repoPath string) (string, error) {
 			}
 		}
 	}
-	
+
 	return "", fmt.Errorf("no readme file found")
 }
 
 func filterResultsByKeywords(repoPath string, results []SearchResult, keywords []string) []SearchResult {
 	var filtered []SearchResult
-	
+
 	for _, result := range results {
 		content, err := GetFileContent(repoPath, result.Path, 0)
 		if err != nil {
 			continue
 		}
-		
+
 		contentLower := strings.ToLower(content)
 		allMatch := true
-		
+
 		for _, keyword := range keywords {
 			if !strings.Contains(contentLower, strings.ToLower(keyword)) {
 				allMatch = false
 				break
 			}
 		}
-		
+
 		if allMatch {
 			filtered = append(filtered, result)
 		}
 	}
-	
+
 	return filtered
 }
 
@@ -585,19 +585,19 @@ func filterResultsByKeywords(repoPath string, results []SearchResult, keywords [
 func mergeResultsWithOR(repoPath string, existingResults []SearchResult, keywords []string) []SearchResult {
 	// Create a map to avoid duplicates
 	resultMap := make(map[string]SearchResult)
-	
+
 	// Add existing results
 	for _, result := range existingResults {
 		resultMap[result.Path] = result
 	}
-	
+
 	// Search for each additional keyword separately
 	for _, keyword := range keywords {
 		args := []string{"grep", "-l", "-r", "--exclude-dir=.git", keyword}
 		cmd := exec.Command("git", args...)
 		cmd.Dir = repoPath
 		output, err := cmd.Output()
-		
+
 		if err != nil {
 			// No matches found is not an error for OR logic
 			if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
@@ -606,7 +606,7 @@ func mergeResultsWithOR(repoPath string, existingResults []SearchResult, keyword
 			// Continue with other keywords even if one fails
 			continue
 		}
-		
+
 		scanner := bufio.NewScanner(strings.NewReader(string(output)))
 		for scanner.Scan() {
 			line := strings.TrimSpace(scanner.Text())
@@ -615,13 +615,13 @@ func mergeResultsWithOR(repoPath string, existingResults []SearchResult, keyword
 			}
 		}
 	}
-	
+
 	// Convert map back to slice
 	var results []SearchResult
 	for _, result := range resultMap {
 		results = append(results, result)
 	}
-	
+
 	return results
 }
 
@@ -632,7 +632,7 @@ func matchesPatterns(filePath string, patterns []string) bool {
 	if len(patterns) == 0 {
 		return true // No patterns means match all
 	}
-	
+
 	for _, pattern := range patterns {
 		if matched, err := filepath.Match(pattern, filepath.Base(filePath)); err == nil && matched {
 			return true
@@ -657,7 +657,7 @@ func shouldIncludeFile(filePath string, includePatterns, excludePatterns []strin
 	if len(excludePatterns) > 0 && matchesPatterns(filePath, excludePatterns) {
 		return false
 	}
-	
+
 	// Check include patterns
 	return matchesPatterns(filePath, includePatterns)
 }
@@ -672,17 +672,17 @@ func countFileCharacters(fullPath string) (int, int) {
 
 	var charCount, lineCount int
 	scanner := bufio.NewScanner(file)
-	
+
 	for scanner.Scan() {
 		line := scanner.Text()
 		charCount += len(line) + 1 // +1 for newline character
 		lineCount++
 	}
-	
+
 	// If file doesn't end with newline, don't count the extra character
 	if lineCount > 0 && charCount > 0 {
 		charCount-- // Remove the last extra newline count
 	}
-	
+
 	return charCount, lineCount
 }

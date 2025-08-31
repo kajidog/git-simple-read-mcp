@@ -50,7 +50,7 @@ func TestHandleGetRepositoryInfo(t *testing.T) {
 				repo := CreateTestRepositoryWithContent(t)
 				tt.args.Repository = repo.Path
 			}
-			
+
 			ctx := context.Background()
 			result, _, err := handleGetRepositoryInfo(ctx, nil, tt.args)
 			if err != nil {
@@ -66,7 +66,7 @@ func TestHandleGetRepositoryInfo(t *testing.T) {
 
 func TestHandleSearchFiles(t *testing.T) {
 	repo := CreateTestRepositoryWithContent(t)
-	
+
 	tests := []struct {
 		name        string
 		args        SearchFilesParams
@@ -129,13 +129,13 @@ func TestFormatSearchResults(t *testing.T) {
 		{Path: "file2.go"},
 	}
 	keywords := []string{"keyword1", "keyword2"}
-	
+
 	// Test AND mode
 	andResult := formatSearchResults(results, keywords, "and")
 	if !strings.Contains(andResult, "keyword1 AND keyword2") {
 		t.Errorf("AND mode result should contain 'AND': %s", andResult)
 	}
-	
+
 	// Test OR mode
 	orResult := formatSearchResults(results, keywords, "or")
 	if !strings.Contains(orResult, "keyword1 OR keyword2") {
@@ -251,14 +251,13 @@ func TestHandleSearchFilesEnhanced(t *testing.T) {
 
 			// Create test repository and copy it to workspace
 			repo := CreateTestRepositoryWithContent(t)
-			
+
 			// Clone the test repository into workspace
 			output, repoName, err := CloneRepository(repo.Path, "test-repo")
 			if err != nil {
 				t.Fatalf("Failed to clone repo into workspace: %v, output: %s", err, output)
 			}
-			
-			
+
 			tt.args.Repository = repoName
 
 			ctx := context.Background()

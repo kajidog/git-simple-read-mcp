@@ -1,10 +1,10 @@
-# Git Remote MCP
+# Git Simple Read MCP
 
-Git読み取りリモートMCP - A Model Context Protocol (MCP) server for Git remote operations with workspace management.
+A Model Context Protocol (MCP) server for Git read operations with workspace management.
 
 ## Features
 
-This MCP server provides the following tools for Git repository operations:
+This MCP server provides the following tools for Git repository read operations:
 
 ### Workspace Management
 - **clone_repository**: Clone a Git repository into the managed workspace
@@ -50,7 +50,7 @@ This MCP server provides the following tools for Git repository operations:
 1. Clone this repository:
 ```bash
 git clone <repository-url>
-cd git-remote-mcp
+cd git-simple-read-mcp
 ```
 
 2. Build the project:
@@ -64,12 +64,12 @@ go build .
 
 Start the MCP server using stdio transport (default):
 ```bash
-./git-remote-mcp mcp --workspace ./my-workspace
+./git-simple-read-mcp mcp --workspace ./my-workspace
 ```
 
 Start the MCP server using HTTP transport:
 ```bash
-./git-remote-mcp mcp --transport http --port 8080 --workspace ./my-workspace
+./git-simple-read-mcp mcp --transport http --port 8080 --workspace ./my-workspace
 ```
 
 The workspace directory will be created automatically if it doesn't exist. All Git operations will be restricted to repositories within this workspace.
@@ -84,7 +84,7 @@ To use this as a remote MCP server:
 go build .
 
 # Start HTTP server (default port 8080)
-./git-remote-mcp mcp --transport http --port 8080 --workspace ./workspace
+./git-simple-read-mcp mcp --transport http --port 8080 --workspace ./workspace
 
 # Or use the provided script
 ./start-server.sh ./workspace 8080
@@ -99,7 +99,7 @@ Add to your MCP client configuration (e.g., Claude Code):
   "mcpServers": {
     "git-remote": {
       "url": "http://localhost:8080/mcp",
-      "description": "Git Remote MCP Server for repository operations"
+      "description": "Git Simple Read MCP Server for repository read operations"
     }
   }
 }
@@ -111,7 +111,7 @@ For remote access across network:
 
 ```bash
 # Start server on all interfaces
-./git-remote-mcp mcp --transport http --port 8080 --workspace ./workspace --host 0.0.0.0
+./git-simple-read-mcp mcp --transport http --port 8080 --workspace ./workspace --host 0.0.0.0
 
 # Then connect from client with
 # "url": "http://your-server-ip:8080/mcp"
@@ -125,14 +125,14 @@ Run with Docker:
 
 ```bash
 # Build the image
-docker build -t git-remote-mcp .
+docker build -t git-simple-read-mcp .
 
 # Run the container
 docker run -d \
-  --name git-remote-mcp \
+  --name git-simple-read-mcp \
   -p 8080:8080 \
   -v $(pwd)/workspace:/workspace \
-  git-remote-mcp
+  git-simple-read-mcp
 
 # Or use docker-compose
 docker-compose up -d
@@ -144,18 +144,18 @@ For systemd-based systems:
 
 ```bash
 # Copy files to production location
-sudo cp git-remote-mcp /opt/git-remote-mcp/
-sudo cp git-remote-mcp.service /etc/systemd/system/
+sudo cp git-simple-read-mcp /opt/git-simple-read-mcp/
+sudo cp git-simple-read-mcp.service /etc/systemd/system/
 
 # Create user and directories
 sudo useradd -r -s /bin/false git-mcp
-sudo mkdir -p /var/lib/git-remote-mcp/workspace
-sudo chown -R git-mcp:git-mcp /var/lib/git-remote-mcp
+sudo mkdir -p /var/lib/git-simple-read-mcp/workspace
+sudo chown -R git-mcp:git-mcp /var/lib/git-simple-read-mcp
 
 # Enable and start service
 sudo systemctl daemon-reload
-sudo systemctl enable git-remote-mcp
-sudo systemctl start git-remote-mcp
+sudo systemctl enable git-simple-read-mcp
+sudo systemctl start git-simple-read-mcp
 ```
 
 ### Tool Parameters

@@ -27,13 +27,13 @@ func SearchFilesEnhanced(repoPath string, keywords []string, searchMode string, 
 	}
 
 	var allResults []SearchResult
-	
+
 	// Search in file contents
 	contentResults, err := searchInContent(repoPath, keywords, searchMode, contextLines, includePatterns, excludePatterns)
 	if err == nil {
 		allResults = append(allResults, contentResults...)
 	}
-	
+
 	// Search in filenames if requested
 	if includeFilename {
 		filenameResults, err := searchInFilenames(repoPath, keywords, searchMode, includePatterns, excludePatterns)
@@ -59,17 +59,17 @@ func searchInContent(repoPath string, keywords []string, searchMode string, cont
 
 	// Build git grep command
 	args := []string{"grep"}
-	
+
 	// Add context lines if requested
 	if contextLines > 0 {
 		args = append(args, "-C", strconv.Itoa(contextLines))
 	}
-	
+
 	// Add line numbers
 	args = append(args, "-n")
-	
+
 	var results []SearchResult
-	
+
 	if searchMode == "or" {
 		// For OR mode, search each keyword separately and merge results
 		for _, keyword := range keywords {
@@ -77,7 +77,7 @@ func searchInContent(repoPath string, keywords []string, searchMode string, cont
 			cmd := exec.Command("git", keywordArgs...)
 			cmd.Dir = repoPath
 			output, err := cmd.Output()
-			
+
 			if err == nil {
 				keywordResults := parseGrepOutput(string(output), "content", contextLines > 0)
 				// Filter results based on include/exclude patterns
@@ -92,9 +92,9 @@ func searchInContent(repoPath string, keywords []string, searchMode string, cont
 			args = append(args, keywords[0])
 			cmd := exec.Command("git", args...)
 			cmd.Dir = repoPath
-			
+
 			output, err := cmd.Output()
-			
+
 			if err == nil {
 				results = parseGrepOutput(string(output), "content", contextLines > 0)
 				// Filter results based on include/exclude patterns
@@ -106,7 +106,7 @@ func searchInContent(repoPath string, keywords []string, searchMode string, cont
 			cmd := exec.Command("git", firstKeywordArgs...)
 			cmd.Dir = repoPath
 			output, err := cmd.Output()
-			
+
 			if err == nil {
 				results = parseGrepOutput(string(output), "content", contextLines > 0)
 				// Filter results based on include/exclude patterns
@@ -126,28 +126,28 @@ func searchInFilenames(repoPath string, keywords []string, searchMode string, in
 	cmd := exec.Command("git", "ls-files")
 	cmd.Dir = repoPath
 	output, err := cmd.Output()
-	
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to list files: %v", err)
 	}
 
 	var results []SearchResult
 	scanner := bufio.NewScanner(strings.NewReader(string(output)))
-	
+
 	for scanner.Scan() {
 		filePath := strings.TrimSpace(scanner.Text())
 		if filePath == "" {
 			continue
 		}
-		
+
 		// Check if file should be included based on patterns
 		if !shouldIncludeFile(filePath, includePatterns, excludePatterns) {
 			continue
 		}
-		
+
 		filename := filepath.Base(filePath)
 		matches := false
-		
+
 		if searchMode == "or" {
 			// OR mode: file matches if any keyword is in filename
 			for _, keyword := range keywords {
@@ -166,7 +166,7 @@ func searchInFilenames(repoPath string, keywords []string, searchMode string, in
 				}
 			}
 		}
-		
+
 		if matches {
 			results = append(results, SearchResult{
 				Path:      filePath,
@@ -190,28 +190,28 @@ func parseGrepOutput(output string, matchType string, hasContext bool) []SearchR
 
 	lines := strings.Split(output, "\n")
 	resultMap := make(map[string]*SearchResult)
-	
+
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
-		
+
 		// Parse git grep output format: filename:linenumber:content
 		parts := strings.SplitN(line, ":", 3)
 		if len(parts) < 3 {
 			continue
 		}
-		
+
 		filePath := parts[0]
 		lineNumStr := parts[1]
 		content := parts[2]
-		
+
 		lineNum, err := strconv.Atoi(lineNumStr)
 		if err != nil {
 			continue
 		}
-		
+
 		// Get or create result for this file
 		if resultMap[filePath] == nil {
 			resultMap[filePath] = &SearchResult{
@@ -220,55 +220,55 @@ func parseGrepOutput(output string, matchType string, hasContext bool) []SearchR
 				Matches:   []MatchLine{},
 			}
 		}
-		
+
 		// Add match line
 		resultMap[filePath].Matches = append(resultMap[filePath].Matches, MatchLine{
 			LineNumber: lineNum,
 			Content:    content,
 		})
 	}
-	
+
 	// Convert map to slice
 	var results []SearchResult
 	for _, result := range resultMap {
 		results = append(results, *result)
 	}
-	
+
 	return results
 }
 
 // filterResultsByAllKeywords filters results to only include files containing all keywords
 func filterResultsByAllKeywords(repoPath string, results []SearchResult, keywords []string) []SearchResult {
 	var filtered []SearchResult
-	
+
 	for _, result := range results {
 		content, err := GetFileContent(repoPath, result.Path, 0)
 		if err != nil {
 			continue
 		}
-		
+
 		contentLower := strings.ToLower(content)
 		allMatch := true
-		
+
 		for _, keyword := range keywords {
 			if !strings.Contains(contentLower, strings.ToLower(keyword)) {
 				allMatch = false
 				break
 			}
 		}
-		
+
 		if allMatch {
 			filtered = append(filtered, result)
 		}
 	}
-	
+
 	return filtered
 }
 
 // removeDuplicateResults removes duplicate search results by path
 func removeDuplicateResults(results []SearchResult) []SearchResult {
 	seen := make(map[string]*SearchResult)
-	
+
 	for _, result := range results {
 		if existing, exists := seen[result.Path]; exists {
 			// Merge matches from duplicate results
@@ -285,25 +285,25 @@ func removeDuplicateResults(results []SearchResult) []SearchResult {
 			seen[result.Path] = &resultCopy
 		}
 	}
-	
+
 	// Convert back to slice
 	var unique []SearchResult
 	for _, result := range seen {
 		unique = append(unique, *result)
 	}
-	
+
 	return unique
 }
 
 // filterResultsByPatterns filters search results based on include/exclude patterns
 func filterResultsByPatterns(results []SearchResult, includePatterns, excludePatterns []string) []SearchResult {
 	var filtered []SearchResult
-	
+
 	for _, result := range results {
 		if shouldIncludeFile(result.Path, includePatterns, excludePatterns) {
 			filtered = append(filtered, result)
 		}
 	}
-	
+
 	return filtered
 }

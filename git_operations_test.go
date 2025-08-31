@@ -31,41 +31,41 @@ func TestGetRepositoryInfo(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			repo := tt.setupRepo(t)
-			
+
 			info, err := GetRepositoryInfo(repo.Path)
-			
+
 			if tt.expectError {
 				if err == nil {
 					t.Errorf("Expected error but got none")
 				}
 				return
 			}
-			
+
 			if err != nil {
 				t.Fatalf("Unexpected error: %v", err)
 			}
-			
+
 			// Verify repository info
 			if info.Path != repo.Path {
 				t.Errorf("Expected path %s, got %s", repo.Path, info.Path)
 			}
-			
+
 			if info.CommitCount <= 0 {
 				t.Errorf("Expected positive commit count, got %d", info.CommitCount)
 			}
-			
+
 			if info.CurrentBranch == "" {
 				t.Errorf("Expected current branch to be set")
 			}
-			
+
 			if info.License == "" {
 				t.Errorf("Expected license file to be detected")
 			}
-			
+
 			if info.ReadmeContent == "" {
 				t.Errorf("Expected README content to be read")
 			}
-			
+
 			if info.LastUpdate.IsZero() {
 				t.Errorf("Expected last update time to be set")
 			}
@@ -75,9 +75,9 @@ func TestGetRepositoryInfo(t *testing.T) {
 
 func TestListBranches(t *testing.T) {
 	tests := []struct {
-		name           string
-		setupRepo      func(t *testing.T) *TestRepository
-		expectError    bool
+		name             string
+		setupRepo        func(t *testing.T) *TestRepository
+		expectError      bool
 		expectedBranches []string
 	}{
 		{
@@ -85,7 +85,7 @@ func TestListBranches(t *testing.T) {
 			setupRepo: func(t *testing.T) *TestRepository {
 				return CreateTestRepositoryWithContent(t)
 			},
-			expectError:    false,
+			expectError:      false,
 			expectedBranches: []string{"main", "feature/test", "develop"},
 		},
 		{
@@ -101,20 +101,20 @@ func TestListBranches(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			repo := tt.setupRepo(t)
-			
+
 			branches, err := ListBranches(repo.Path)
-			
+
 			if tt.expectError {
 				if err == nil {
 					t.Errorf("Expected error but got none")
 				}
 				return
 			}
-			
+
 			if err != nil {
 				t.Fatalf("Unexpected error: %v", err)
 			}
-			
+
 			// Check that we have the expected branches
 			branchNames := make([]string, len(branches))
 			currentBranch := ""
@@ -124,12 +124,12 @@ func TestListBranches(t *testing.T) {
 					currentBranch = branch.Name
 				}
 			}
-			
+
 			// Verify current branch is set
 			if currentBranch == "" {
 				t.Errorf("Expected one branch to be marked as current")
 			}
-			
+
 			// Verify expected branches exist
 			for _, expectedBranch := range tt.expectedBranches {
 				found := false
@@ -149,9 +149,9 @@ func TestListBranches(t *testing.T) {
 
 func TestSwitchBranch(t *testing.T) {
 	tests := []struct {
-		name        string
+		name         string
 		targetBranch string
-		expectError bool
+		expectError  bool
 	}{
 		{
 			name:         "switch to existing branch",
@@ -168,30 +168,30 @@ func TestSwitchBranch(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			repo := CreateTestRepositoryWithContent(t)
-			
+
 			output, err := SwitchBranch(repo.Path, tt.targetBranch)
-			
+
 			if tt.expectError {
 				if err == nil {
 					t.Errorf("Expected error but got none")
 				}
 				return
 			}
-			
+
 			if err != nil {
 				t.Fatalf("Unexpected error: %v", err)
 			}
-			
+
 			if output == "" {
 				t.Errorf("Expected output from branch switch command")
 			}
-			
+
 			// Verify the branch was actually switched
 			branches, err := ListBranches(repo.Path)
 			if err != nil {
 				t.Fatalf("Failed to list branches after switch: %v", err)
 			}
-			
+
 			currentBranch := ""
 			for _, branch := range branches {
 				if branch.IsCurrent {
@@ -199,7 +199,7 @@ func TestSwitchBranch(t *testing.T) {
 					break
 				}
 			}
-			
+
 			if currentBranch != tt.targetBranch {
 				t.Errorf("Expected current branch %s, got %s", tt.targetBranch, currentBranch)
 			}
@@ -209,38 +209,38 @@ func TestSwitchBranch(t *testing.T) {
 
 func TestSearchFiles(t *testing.T) {
 	tests := []struct {
-		name         string
-		keywords     []string
-		maxResults   int
-		expectError  bool
+		name          string
+		keywords      []string
+		maxResults    int
+		expectError   bool
 		expectedFiles []string
 	}{
 		{
-			name:         "search for single keyword",
-			keywords:     []string{"database"},
-			maxResults:   10,
-			expectError:  false,
+			name:          "search for single keyword",
+			keywords:      []string{"database"},
+			maxResults:    10,
+			expectError:   false,
 			expectedFiles: []string{"config.json"},
 		},
 		{
-			name:         "search for multiple keywords (AND logic)",
-			keywords:     []string{"database", "postgres"},
-			maxResults:   10,
-			expectError:  false,
+			name:          "search for multiple keywords (AND logic)",
+			keywords:      []string{"database", "postgres"},
+			maxResults:    10,
+			expectError:   false,
 			expectedFiles: []string{"config.json"},
 		},
 		{
-			name:        "search with no matches",
-			keywords:    []string{"nonexistent"},
-			maxResults:  10,
-			expectError: false,
+			name:          "search with no matches",
+			keywords:      []string{"nonexistent"},
+			maxResults:    10,
+			expectError:   false,
 			expectedFiles: []string{},
 		},
 		{
-			name:        "empty keywords",
-			keywords:    []string{},
-			maxResults:  10,
-			expectError: false,
+			name:          "empty keywords",
+			keywords:      []string{},
+			maxResults:    10,
+			expectError:   false,
 			expectedFiles: []string{},
 		},
 	}
@@ -248,25 +248,25 @@ func TestSearchFiles(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			repo := CreateTestRepositoryWithContent(t)
-			
+
 			results, err := SearchFiles(repo.Path, tt.keywords, "and", false, 0, nil, nil, tt.maxResults)
-			
+
 			if tt.expectError {
 				if err == nil {
 					t.Errorf("Expected error but got none")
 				}
 				return
 			}
-			
+
 			if err != nil {
 				t.Fatalf("Unexpected error: %v", err)
 			}
-			
+
 			// Verify result count
 			if len(results) != len(tt.expectedFiles) {
 				t.Errorf("Expected %d results, got %d", len(tt.expectedFiles), len(results))
 			}
-			
+
 			// Verify expected files are found
 			for _, expectedFile := range tt.expectedFiles {
 				found := false
@@ -329,24 +329,24 @@ func TestListFiles(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			repo := CreateTestRepositoryWithContent(t)
-			
+
 			files, err := ListFiles(repo.Path, tt.dirPath, tt.recursive, nil, nil, tt.maxResults)
-			
+
 			if tt.expectError {
 				if err == nil {
 					t.Errorf("Expected error but got none")
 				}
 				return
 			}
-			
+
 			if err != nil {
 				t.Fatalf("Unexpected error: %v", err)
 			}
-			
+
 			if len(files) < tt.minFiles {
 				t.Errorf("Expected at least %d files, got %d", tt.minFiles, len(files))
 			}
-			
+
 			// Verify file info is populated
 			for _, file := range files {
 				if file.Name == "" {
@@ -366,24 +366,24 @@ func TestListFiles(t *testing.T) {
 
 func TestGetFileContent(t *testing.T) {
 	tests := []struct {
-		name         string
-		filePath     string
-		maxLines     int
-		expectError  bool
+		name            string
+		filePath        string
+		maxLines        int
+		expectError     bool
 		expectedContent string
 	}{
 		{
-			name:         "read existing file",
-			filePath:     "README.md",
-			maxLines:     0,
-			expectError:  false,
-			expectedContent: "# Test Repository\n\nThis is a test repository for Git Remote MCP.\n",
+			name:            "read existing file",
+			filePath:        "README.md",
+			maxLines:        0,
+			expectError:     false,
+			expectedContent: "# Test Repository\n\nThis is a test repository for Git Simple Read MCP.\n",
 		},
 		{
-			name:         "read file with line limit",
-			filePath:     "README.md",
-			maxLines:     1,
-			expectError:  false,
+			name:            "read file with line limit",
+			filePath:        "README.md",
+			maxLines:        1,
+			expectError:     false,
 			expectedContent: "# Test Repository\n",
 		},
 		{
@@ -397,20 +397,20 @@ func TestGetFileContent(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			repo := CreateTestRepositoryWithContent(t)
-			
+
 			content, err := GetFileContent(repo.Path, tt.filePath, tt.maxLines)
-			
+
 			if tt.expectError {
 				if err == nil {
 					t.Errorf("Expected error but got none")
 				}
 				return
 			}
-			
+
 			if err != nil {
 				t.Fatalf("Unexpected error: %v", err)
 			}
-			
+
 			if content != tt.expectedContent {
 				t.Errorf("Content mismatch.\nExpected: %q\nActual: %q", tt.expectedContent, content)
 			}
@@ -444,9 +444,9 @@ func TestPullRepository(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			repo := tt.setupRepo(t)
-			
+
 			output, err := PullRepository(repo.Path)
-			
+
 			if tt.expectError {
 				if err == nil {
 					t.Errorf("Expected error but got none")
@@ -457,11 +457,11 @@ func TestPullRepository(t *testing.T) {
 				}
 				return
 			}
-			
+
 			if err != nil {
 				t.Fatalf("Unexpected error: %v", err)
 			}
-			
+
 			if output == "" {
 				t.Errorf("Expected output from pull command")
 			}
@@ -476,7 +476,7 @@ func TestHelperFunctions(t *testing.T) {
 		if !isGitRepository(repo.Path) {
 			t.Errorf("Expected %s to be recognized as git repository", repo.Path)
 		}
-		
+
 		// Test with non-git directory
 		tempDir := t.TempDir()
 		if isGitRepository(tempDir) {
@@ -510,17 +510,17 @@ func TestHelperFunctions(t *testing.T) {
 func TestEdgeCases(t *testing.T) {
 	t.Run("very large repository", func(t *testing.T) {
 		repo := CreateTestRepositoryWithContent(t)
-		
+
 		// Create many files
 		repo.CreateManyFiles("large", 100)
 		repo.AddCommit("Add many files")
-		
+
 		// Test listing files with limit
 		files, err := ListFiles(repo.Path, "large", false, nil, nil, 10)
 		if err != nil {
 			t.Fatalf("Failed to list files: %v", err)
 		}
-		
+
 		if len(files) > 10 {
 			t.Errorf("Expected at most 10 files, got %d", len(files))
 		}
@@ -528,19 +528,19 @@ func TestEdgeCases(t *testing.T) {
 
 	t.Run("file with special characters", func(t *testing.T) {
 		repo := CreateTestRepositoryWithContent(t)
-		
+
 		// Create file with special characters
 		specialFile := "special-file_123.txt"
 		specialContent := "Content with special characters: åäö, 中文, 🎉\n"
 		repo.WriteFile(specialFile, specialContent)
 		repo.AddCommit("Add special file")
-		
+
 		// Test reading the file
 		content, err := GetFileContent(repo.Path, specialFile, 0)
 		if err != nil {
 			t.Fatalf("Failed to read special file: %v", err)
 		}
-		
+
 		if content != specialContent {
 			t.Errorf("Special character content mismatch")
 		}
@@ -548,13 +548,13 @@ func TestEdgeCases(t *testing.T) {
 
 	t.Run("empty repository", func(t *testing.T) {
 		repo := CreateTestRepository(t)
-		
+
 		// Test operations on empty repository
 		info, err := GetRepositoryInfo(repo.Path)
 		if err != nil {
 			t.Fatalf("Failed to get info for empty repo: %v", err)
 		}
-		
+
 		if info.CommitCount != 0 {
 			t.Errorf("Expected 0 commits in empty repo, got %d", info.CommitCount)
 		}

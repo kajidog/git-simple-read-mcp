@@ -13,10 +13,10 @@ import (
 // McpCmd is the command for starting MCP server
 var McpCmd = &cobra.Command{
 	Use:   "mcp",
-	Short: "Start MCP server for Git remote operations",
-	Long: `Start a Model Context Protocol (MCP) server that provides Git remote operations.
+	Short: "Start MCP server for Git read operations",
+	Long: `Start a Model Context Protocol (MCP) server that provides Git read operations.
 
-Supports repository information, branch management, file operations, and search capabilities.
+Supports repository information, branch listing, file operations, and search capabilities.
 Supports both stdio (default) and HTTP transports for maximum compatibility.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		transport, _ := cmd.Flags().GetString("transport")
@@ -50,7 +50,7 @@ Supports both stdio (default) and HTTP transports for maximum compatibility.`,
 			handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
 				return server
 			}, nil)
-			
+
 			address := fmt.Sprintf("%s:%d", host, port)
 			fmt.Printf("Starting Git Remote MCP server on %s\n", address)
 			return http.ListenAndServe(address, handler)
@@ -69,9 +69,9 @@ func CreateMCPServer() *mcp.Server {
 	opts := &mcp.ServerOptions{
 		Instructions: "Use this Git Remote MCP server for repository operations!",
 	}
-	
+
 	server := mcp.NewServer(&mcp.Implementation{
-		Name:    "git-remote-mcp",
+		Name:    "git-simple-read-mcp",
 		Version: "1.0.0",
 	}, opts)
 

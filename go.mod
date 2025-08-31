@@ -1,4 +1,4 @@
-module github.com/kajidog/git-remote-mcp
+module github.com/kajidog/git-simple-read-mcp
 
 go 1.23.0
 

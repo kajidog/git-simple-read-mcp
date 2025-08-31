@@ -55,3 +55,5 @@ Thumbs.db
 vendor/
 *.prof
 *.pprof
+
+git-simple-read-mcp

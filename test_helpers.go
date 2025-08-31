@@ -20,27 +20,48 @@ type TestRepository struct {
 // CreateTestRepository creates a temporary Git repository for testing
 func CreateTestRepository(t *testing.T) *TestRepository {
 	tempDir := t.TempDir()
-	
+
 	repo := &TestRepository{
 		Path: tempDir,
 		T:    t,
 	}
-	
+
 	// Initialize git repository
 	repo.runGitCommand("init")
 	repo.runGitCommand("config", "user.name", "Test User")
 	repo.runGitCommand("config", "user.email", "test@example.com")
 	repo.runGitCommand("config", "init.defaultBranch", "main")
-	
+
 	return repo
 }
 
 // CreateTestRepositoryWithContent creates a test repository with sample content
 func CreateTestRepositoryWithContent(t *testing.T) *TestRepository {
-	repo := CreateTestRepository(t)
-	
+	// Create a workspace directory
+	workspaceDir := t.TempDir()
+	if err := InitializeWorkspace(workspaceDir); err != nil {
+		t.Fatalf("Failed to initialize workspace: %v", err)
+	}
+
+	// Create repository within the workspace
+	repoDir := filepath.Join(workspaceDir, "test-repo")
+	if err := os.MkdirAll(repoDir, 0755); err != nil {
+		t.Fatalf("Failed to create repo directory: %v", err)
+	}
+
+	repo := &TestRepository{
+		Path: repoDir,
+		T:    t,
+	}
+
+	// Initialize git repository
+	repo.runGitCommand("init")
+	repo.runGitCommand("config", "user.name", "Test User")
+	repo.runGitCommand("config", "user.email", "test@example.com")
+	repo.runGitCommand("config", "init.defaultBranch", "main")
+
 	// Create initial files
-	repo.WriteFile("README.md", "# Test Repository\n\nThis is a test repository for Git Remote MCP.")
+	repo.WriteFile("README.md", "# Test Repository\n\nThis is a test repository for Git Simple Read MCP.")
 	repo.WriteFile("LICENSE", "MIT License\n\nCopyright (c) 2024 Test")
 	repo.WriteFile("main.go", `package main
 
@@ -61,29 +82,29 @@ func Multiply(a, b int) int {
 }
 `)
 	repo.WriteFile("docs/api.md", "# API Documentation\n\nThis is the API documentation.")
-	
+
 	// Create initial commit
 	repo.runGitCommand("add", ".")
 	repo.runGitCommand("commit", "-m", "Initial commit")
-	
+
 	// Ensure we're on main branch (rename master to main if needed)
 	currentBranch := repo.getCurrentBranch()
 	if currentBranch == "master" {
 		repo.runGitCommand("branch", "-m", "master", "main")
 	}
-	
+
 	// Create additional branches
 	repo.CreateBranch("feature/test")
 	repo.CreateBranch("develop")
-	
+
 	// Switch back to main
 	repo.runGitCommand("checkout", "main")
-	
+
 	// Add more commits
 	repo.WriteFile("version.txt", "1.0.0")
 	repo.runGitCommand("add", "version.txt")
 	repo.runGitCommand("commit", "-m", "Add version file")
-	
+
 	// Add file with search keywords
 	repo.WriteFile("config.json", `{
 	"database": "postgres",
@@ -95,7 +116,7 @@ func Multiply(a, b int) int {
 }`)
 	repo.runGitCommand("add", "config.json")
 	repo.runGitCommand("commit", "-m", "Add configuration")
-	
+
 	return repo
 }
 
@@ -103,11 +124,11 @@ func Multiply(a, b int) int {
 func (tr *TestRepository) WriteFile(filename, content string) {
 	fullPath := filepath.Join(tr.Path, filename)
 	dir := filepath.Dir(fullPath)
-	
+
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		tr.T.Fatalf("Failed to create directory %s: %v", dir, err)
 	}
-	
+
 	if err := os.WriteFile(fullPath, []byte(content), 0644); err != nil {
 		tr.T.Fatalf("Failed to write file %s: %v", fullPath, err)
 	}
