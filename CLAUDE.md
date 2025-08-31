@@ -39,23 +39,26 @@ make run-http         # HTTP transport on port 8080
 
 ## Architecture Overview
 
-This is a Go-based Model Context Protocol (MCP) server that provides Git remote operations with workspace security.
+This is a Go-based Model Context Protocol (MCP) server that provides Git remote operations with workspace security and enhanced file operations.
 
 ### Core Architecture Layers
 
 1. **MCP Layer** (`mcp_server.go`, `mcp_tools_git.go`)
    - MCP server initialization with both stdio and HTTP transport support
    - Tool parameter definitions and handler registration
-   - 10 registered tools: repository info, cloning, branch operations, file operations, search
+   - 10 registered tools: repository info, cloning, branch operations, enhanced file operations, pattern-based search
 
 2. **Workspace Security Layer** (`workspace.go`)
    - `WorkspaceManager` enforces all operations within a specified workspace directory
    - Path validation prevents directory traversal attacks
    - Repository isolation and management
 
-3. **Git Operations Layer** (`git_operations.go`)
+3. **Git Operations Layer** (`git_operations.go`, `search_enhanced.go`)
    - Direct Git command execution via `os/exec`
-   - Core Git operations: info, pull, branches, file listing, content reading
+   - Core Git operations: info, pull, branches, enhanced file listing, content reading
+   - Pattern-based file filtering with glob support
+   - Character and line counting for text files
+   - Multiple file content retrieval with individual error handling
    - Automatic repository name extraction from Git URLs
 
 4. **Application Layer** (`main.go`)
@@ -77,10 +80,28 @@ Tools use consistent parameter naming:
 - Optional parameters use `omitempty` JSON tags
 - Automatic defaults: `limit=20` (search), `limit=50` (list_files), `max_lines=100`
 
+### Enhanced File Operations
+
+**Pattern Filtering:**
+- `include_patterns` and `exclude_patterns` support glob patterns (*.go, src/*, etc.)
+- Applied to both `list_files` and `search_files` operations
+- Uses Go's `filepath.Match` for pattern matching
+
+**File Information Enhancement:**
+- Character count and line count for text files
+- File size with human-readable formatting (bytes/KB/MB)
+- Modification timestamps
+
+**Multiple File Content:**
+- `get_file_content` supports single file (backward compatible) and multiple files
+- Individual error handling per file in multi-file requests
+- Per-file line limits applied consistently
+
 ### Test Structure
 
 Tests are organized into categories matching the Makefile targets:
 - `*_test.go` - Core functionality tests
+- `enhanced_features_test.go` - Tests for new pattern filtering, character count, and multi-file features
 - `test_helpers.go` - Shared test utilities with `TestRepository` struct
 - `performance_test.go` - Resource usage and concurrency tests
 - `edge_cases_test.go` - Error conditions and boundary cases

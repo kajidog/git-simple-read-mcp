@@ -30,9 +30,20 @@ This MCP server provides the following tools for Git repository operations:
 - **switch_branch**: Switch to a specified branch
 
 ### File Operations
-- **search_files**: Search for files containing specified keywords (AND logic, supports pagination)
-- **list_files**: List files in specified directory (supports recursive expansion and pagination)
-- **get_file_content**: Get the content of a specific file (supports line limits)
+- **search_files**: Search for files containing specified keywords with enhanced filtering
+  - AND/OR logic support
+  - File pattern filtering (include/exclude patterns)
+  - Context lines around matches
+  - Filename and content search
+- **list_files**: List files in specified directory with enhanced information
+  - Recursive expansion
+  - File pattern filtering (include/exclude patterns) 
+  - Character count and line count for each file
+  - File size information
+- **get_file_content**: Get the content of files
+  - Single file or multiple files in one request
+  - Individual error handling for each file
+  - Line limits applied per file
 
 ## Installation
 
@@ -206,9 +217,23 @@ Each tool accepts JSON parameters:
 {
   "repository": "my-repo",
   "keywords": ["keyword1", "keyword2"],
+  "search_mode": "and",
+  "include_filename": false,
+  "context_lines": 0,
+  "include_patterns": ["*.go", "*.js"],
+  "exclude_patterns": ["*_test.go", "vendor/*"],
   "limit": 20
 }
 ```
+
+**Parameters:**
+- `keywords`: Array of search terms
+- `search_mode`: "and" (all keywords) or "or" (any keyword), default: "and"
+- `include_filename`: Search in filenames too, default: false
+- `context_lines`: Lines of context around matches, default: 0
+- `include_patterns`: File patterns to include (glob format)
+- `exclude_patterns`: File patterns to exclude (glob format)
+- `limit`: Maximum results, default: 20
 
 #### list_files
 ```json
@@ -216,17 +241,130 @@ Each tool accepts JSON parameters:
   "repository": "my-repo",
   "directory": "src",
   "recursive": true,
+  "include_patterns": ["*.go", "*.js"],
+  "exclude_patterns": ["*_test.go", "node_modules/*"],
   "limit": 50
 }
 ```
 
+**Parameters:**
+- `directory`: Target directory, default: "."
+- `recursive`: Include subdirectories, default: false
+- `include_patterns`: File patterns to include (glob format)
+- `exclude_patterns`: File patterns to exclude (glob format)
+- `limit`: Maximum files to return, default: 50
+
+**Output includes:**
+- File path and name
+- Directory flag
+- File size (bytes/KB/MB)
+- Character count (for text files)
+- Line count (for text files)
+- Modification time
+
 #### get_file_content
+
+**Single file:**
 ```json
 {
   "repository": "my-repo",
   "file_path": "src/main.go",
   "max_lines": 100
 }
+```
+
+**Multiple files:**
+```json
+{
+  "repository": "my-repo",
+  "file_paths": ["src/main.go", "src/utils.go", "config.json"],
+  "max_lines": 100
+}
+```
+
+**Parameters:**
+- `file_path`: Single file path (for backward compatibility)
+- `file_paths`: Array of file paths (for multiple files)
+- `max_lines`: Maximum lines per file, default: 100
+
+**Multiple file output:**
+- Individual success/error status per file
+- File path identification
+- Content or error message for each file
+
+## Enhanced Features Examples
+
+### File Pattern Filtering
+
+**List only Go files:**
+```json
+{
+  "repository": "my-repo",
+  "include_patterns": ["*.go"]
+}
+```
+
+**List all files except tests and vendor:**
+```json
+{
+  "repository": "my-repo",
+  "exclude_patterns": ["*_test.go", "vendor/*", "node_modules/*"]
+}
+```
+
+**Search for functions only in source files:**
+```json
+{
+  "repository": "my-repo", 
+  "keywords": ["func"],
+  "include_patterns": ["src/*.go", "lib/*.go"],
+  "exclude_patterns": ["*_test.go"]
+}
+```
+
+### Character Count and File Information
+
+The `list_files` tool now returns detailed file information:
+```
+📄 main.go (2.1 KB, 156 chars, 8 lines)
+📄 utils.go (1.5 KB, 98 chars, 5 lines)
+📁 src/
+📄 src/app.js (856 bytes, 45 chars, 3 lines)
+```
+
+### Multiple File Content Retrieval
+
+```json
+{
+  "repository": "my-repo",
+  "file_paths": ["main.go", "config.json", "README.md"],
+  "max_lines": 50
+}
+```
+
+Returns content for all files with individual error handling:
+```
+Content of 3 files:
+==================================================
+
+📄 main.go
+```
+package main
+func main() {}
+```
+
+------------------------------------------
+
+📄 config.json  
+❌ Error: file not found
+
+------------------------------------------
+
+📄 README.md
+```
+# My Project
+This is a sample project
+```
 ```
 
 ## Error Handling
