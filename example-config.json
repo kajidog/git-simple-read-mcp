@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "git-remote": {
+      "url": "http://localhost:8080/mcp",
+      "description": "Git Remote MCP Server for repository operations"
+    }
+  }
+}

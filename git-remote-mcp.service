@@ -1,0 +1,24 @@
+[Unit]
+Description=Git Remote MCP Server
+After=network.target
+
+[Service]
+Type=simple
+User=git-mcp
+Group=git-mcp
+WorkingDirectory=/opt/git-remote-mcp
+ExecStart=/opt/git-remote-mcp/git-remote-mcp mcp --transport http --port 8080 --host 0.0.0.0 --workspace /var/lib/git-remote-mcp/workspace
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/git-remote-mcp
+
+[Install]
+WantedBy=multi-user.target

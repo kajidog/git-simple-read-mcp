@@ -1,0 +1,57 @@
+# Build artifacts
+git-remote-mcp
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test artifacts
+*.test
+*.out
+test_workspace/
+test_workspace_*/
+**/test_workspace
+coverage.html
+coverage.out
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Runtime data
+*.pid
+*.seed
+*.log
+logs/
+
+# Debug files
+debug_*
+test_*.py
+test_*.js
+manual-test/
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Go specific
+vendor/
+*.prof
+*.pprof
