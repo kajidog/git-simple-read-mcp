@@ -54,10 +54,11 @@ type ListFilesParams struct {
 
 // GetFileContentParams parameters for get_file_content tool
 type GetFileContentParams struct {
-	Repository string   `json:"repository"`
-	FilePath   string   `json:"file_path,omitempty"`  // Single file path (for backward compatibility)
-	FilePaths  []string `json:"file_paths,omitempty"` // Multiple file paths
-	MaxLines   int      `json:"max_lines,omitempty"`  // Max lines per file
+	Repository  string   `json:"repository"`
+	FilePath    string   `json:"file_path,omitempty"`    // Single file path (for backward compatibility)
+	FilePaths   []string `json:"file_paths,omitempty"`   // Multiple file paths
+	MaxLines    int      `json:"max_lines,omitempty"`    // Max lines per file
+	ShowLineNumbers bool `json:"show_line_numbers,omitempty"` // Show line numbers in output
 }
 
 // CloneRepositoryParams parameters for clone_repository tool
@@ -74,6 +75,12 @@ type ListWorkspaceRepositoriesParams struct {
 // RemoveRepositoryParams parameters for remove_repository tool
 type RemoveRepositoryParams struct {
 	Name string `json:"name"`
+}
+
+// GetReadmeFilesParams parameters for get_readme_files tool
+type GetReadmeFilesParams struct {
+	Repository string `json:"repository"`
+	Recursive  bool   `json:"recursive,omitempty"` // Search subdirectories
 }
 
 // RegisterGitTools registers all Git-related MCP tools
@@ -137,6 +144,12 @@ func RegisterGitTools(server *mcp.Server) {
 		Name:        "remove_repository",
 		Description: "Remove a repository from the workspace",
 	}, handleRemoveRepository)
+
+	// Get README files tool
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "get_readme_files",
+		Description: "Find and list all README files in the repository with optional recursive search",
+	}, handleGetReadmeFiles)
 }
 
 func handleGetRepositoryInfo(ctx context.Context, req *mcp.CallToolRequest, args GetRepositoryInfoParams) (*mcp.CallToolResult, any, error) {
@@ -342,7 +355,7 @@ func handleGetFileContent(ctx context.Context, req *mcp.CallToolRequest, args Ge
 
 	if len(filePaths) == 1 {
 		// Single file - maintain backward compatibility
-		content, err := GetFileContent(args.Repository, filePaths[0], maxLines)
+		content, err := GetFileContentWithLineNumbers(args.Repository, filePaths[0], maxLines, args.ShowLineNumbers)
 		if err != nil {
 			return &mcp.CallToolResult{
 				Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Failed to get file content: %v", err)}},
@@ -356,7 +369,7 @@ func handleGetFileContent(ctx context.Context, req *mcp.CallToolRequest, args Ge
 		}, nil, nil
 	} else {
 		// Multiple files
-		results, err := GetMultipleFileContents(args.Repository, filePaths, maxLines)
+		results, err := GetMultipleFileContentsWithLineNumbers(args.Repository, filePaths, maxLines, args.ShowLineNumbers)
 		if err != nil {
 			return &mcp.CallToolResult{
 				Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Failed to get file contents: %v", err)}},
@@ -453,6 +466,28 @@ func handleRemoveRepository(ctx context.Context, req *mcp.CallToolRequest, args 
 	}
 
 	resultText := fmt.Sprintf("Successfully removed repository '%s'", args.Name)
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: resultText}},
+	}, nil, nil
+}
+
+func handleGetReadmeFiles(ctx context.Context, req *mcp.CallToolRequest, args GetReadmeFilesParams) (*mcp.CallToolResult, any, error) {
+	if args.Repository == "" {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "Error: repository path is required"}},
+			IsError: true,
+		}, nil, nil
+	}
+
+	readmeFiles, err := GetReadmeFiles(args.Repository, args.Recursive)
+	if err != nil {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Failed to find README files: %v", err)}},
+			IsError: true,
+		}, nil, nil
+	}
+
+	resultText := formatReadmeFiles(readmeFiles, args.Recursive)
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{&mcp.TextContent{Text: resultText}},
 	}, nil, nil
@@ -662,6 +697,49 @@ func formatMultipleFileContents(results []FileContentResult) string {
 			}
 			result.WriteString("```\n")
 		}
+	}
+
+	return result.String()
+}
+
+func formatReadmeFiles(readmeFiles []ReadmeFileInfo, recursive bool) string {
+	var result strings.Builder
+
+	searchMode := "root directory only"
+	if recursive {
+		searchMode = "recursive search"
+	}
+
+	result.WriteString(fmt.Sprintf("README Files (%s, %d found):\n", searchMode, len(readmeFiles)))
+	result.WriteString(strings.Repeat("=", 50) + "\n\n")
+
+	if len(readmeFiles) == 0 {
+		result.WriteString("No README files found in the repository.\n")
+		return result.String()
+	}
+
+	for _, readme := range readmeFiles {
+		result.WriteString(fmt.Sprintf("📄 %s\n", readme.Path))
+		if readme.Size > 0 {
+			var sizeStr string
+			if readme.Size < 1024 {
+				sizeStr = fmt.Sprintf("%d bytes", readme.Size)
+			} else if readme.Size < 1024*1024 {
+				sizeStr = fmt.Sprintf("%.1f KB", float64(readme.Size)/1024)
+			} else {
+				sizeStr = fmt.Sprintf("%.1f MB", float64(readme.Size)/(1024*1024))
+			}
+			result.WriteString(fmt.Sprintf("   Size: %s", sizeStr))
+			
+			if readme.LineCount > 0 {
+				result.WriteString(fmt.Sprintf(" | Lines: %d", readme.LineCount))
+			}
+			result.WriteString("\n")
+		}
+		if !readme.ModTime.IsZero() {
+			result.WriteString(fmt.Sprintf("   Modified: %s\n", readme.ModTime.Format("2006-01-02 15:04:05")))
+		}
+		result.WriteString("\n")
 	}
 
 	return result.String()

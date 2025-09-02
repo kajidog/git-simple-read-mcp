@@ -407,6 +407,14 @@ type FileContentResult struct {
 	Error    string `json:"error,omitempty"`
 }
 
+// ReadmeFileInfo represents information about a README file
+type ReadmeFileInfo struct {
+	Path      string    `json:"path"`
+	Size      int64     `json:"size"`
+	ModTime   time.Time `json:"mod_time"`
+	LineCount int       `json:"line_count,omitempty"`
+}
+
 // GetFileContent reads the content of a file
 func GetFileContent(repoPath, filePath string, maxLines int) (string, error) {
 	// Validate workspace path
@@ -468,6 +476,178 @@ func GetMultipleFileContents(repoPath string, filePaths []string, maxLines int) 
 	}
 
 	return results, nil
+}
+
+// GetFileContentWithLineNumbers reads the content of a file with optional line numbers
+func GetFileContentWithLineNumbers(repoPath, filePath string, maxLines int, showLineNumbers bool) (string, error) {
+	// Validate workspace path
+	validPath, err := ValidateWorkspacePath(repoPath)
+	if err != nil {
+		return "", err
+	}
+	repoPath = validPath
+
+	fullPath := filepath.Join(repoPath, filePath)
+
+	file, err := os.Open(fullPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to open file: %v", err)
+	}
+	defer file.Close()
+
+	var content strings.Builder
+	scanner := bufio.NewScanner(file)
+	lineCount := 0
+
+	for scanner.Scan() && (maxLines == 0 || lineCount < maxLines) {
+		lineCount++
+		if showLineNumbers {
+			content.WriteString(fmt.Sprintf("%4d: %s\n", lineCount, scanner.Text()))
+		} else {
+			content.WriteString(scanner.Text())
+			content.WriteString("\n")
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return "", fmt.Errorf("failed to read file: %v", err)
+	}
+
+	return content.String(), nil
+}
+
+// GetMultipleFileContentsWithLineNumbers reads the content of multiple files with optional line numbers
+func GetMultipleFileContentsWithLineNumbers(repoPath string, filePaths []string, maxLines int, showLineNumbers bool) ([]FileContentResult, error) {
+	// Validate workspace path
+	validPath, err := ValidateWorkspacePath(repoPath)
+	if err != nil {
+		return nil, err
+	}
+	repoPath = validPath
+
+	var results []FileContentResult
+
+	for _, filePath := range filePaths {
+		result := FileContentResult{
+			FilePath: filePath,
+		}
+
+		content, err := GetFileContentWithLineNumbers(repoPath, filePath, maxLines, showLineNumbers)
+		if err != nil {
+			result.Error = err.Error()
+		} else {
+			result.Content = content
+		}
+
+		results = append(results, result)
+	}
+
+	return results, nil
+}
+
+// GetReadmeFiles finds all README files in the repository
+func GetReadmeFiles(repoPath string, recursive bool) ([]ReadmeFileInfo, error) {
+	// Validate workspace path
+	validPath, err := ValidateWorkspacePath(repoPath)
+	if err != nil {
+		return nil, err
+	}
+	repoPath = validPath
+
+	var readmeFiles []ReadmeFileInfo
+	readmePatterns := []string{"README", "README.*", "readme", "readme.*", "Readme", "Readme.*"}
+
+	if recursive {
+		err := filepath.WalkDir(repoPath, func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return nil // Skip errors, continue walking
+			}
+
+			// Skip .git directory
+			if d.IsDir() && d.Name() == ".git" {
+				return fs.SkipDir
+			}
+
+			// Skip directories
+			if d.IsDir() {
+				return nil
+			}
+
+			// Check if file matches README pattern
+			fileName := d.Name()
+			for _, pattern := range readmePatterns {
+				if matched, err := filepath.Match(pattern, fileName); err == nil && matched {
+					info, err := d.Info()
+					if err != nil {
+						return nil
+					}
+
+					// Get relative path
+					relPath, err := filepath.Rel(repoPath, path)
+					if err != nil {
+						return nil
+					}
+
+					// Count lines for text files
+					_, lineCount := countFileCharacters(path)
+
+					readmeInfo := ReadmeFileInfo{
+						Path:      relPath,
+						Size:      info.Size(),
+						ModTime:   info.ModTime(),
+						LineCount: lineCount,
+					}
+
+					readmeFiles = append(readmeFiles, readmeInfo)
+					break // Don't check other patterns for this file
+				}
+			}
+
+			return nil
+		})
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to walk directory: %v", err)
+		}
+	} else {
+		// Only search in root directory
+		entries, err := os.ReadDir(repoPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read directory: %v", err)
+		}
+
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+
+			fileName := entry.Name()
+			for _, pattern := range readmePatterns {
+				if matched, err := filepath.Match(pattern, fileName); err == nil && matched {
+					info, err := entry.Info()
+					if err != nil {
+						continue
+					}
+
+					// Count lines for text files
+					fullPath := filepath.Join(repoPath, fileName)
+					_, lineCount := countFileCharacters(fullPath)
+
+					readmeInfo := ReadmeFileInfo{
+						Path:      fileName,
+						Size:      info.Size(),
+						ModTime:   info.ModTime(),
+						LineCount: lineCount,
+					}
+
+					readmeFiles = append(readmeFiles, readmeInfo)
+					break // Don't check other patterns for this file
+				}
+			}
+		}
+	}
+
+	return readmeFiles, nil
 }
 
 // Helper functions

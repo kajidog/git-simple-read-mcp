@@ -46,7 +46,7 @@ This is a Go-based Model Context Protocol (MCP) server that provides Git read op
 1. **MCP Layer** (`mcp_server.go`, `mcp_tools_git.go`)
    - MCP server initialization with both stdio and HTTP transport support
    - Tool parameter definitions and handler registration
-   - 10 registered tools: repository info, cloning, branch listing, enhanced file operations, pattern-based search
+   - 11 registered tools: repository info, cloning, branch listing, enhanced file operations, pattern-based search, README discovery
 
 2. **Workspace Security Layer** (`workspace.go`)
    - `WorkspaceManager` enforces all operations within a specified workspace directory
@@ -60,6 +60,8 @@ This is a Go-based Model Context Protocol (MCP) server that provides Git read op
    - Character and line counting for text files
    - Multiple file content retrieval with individual error handling
    - Automatic repository name extraction from Git URLs
+   - README file discovery with recursive search support
+   - Optional line numbers for file content display
 
 4. **Application Layer** (`main.go`)
    - Cobra CLI framework with `mcp` subcommand
@@ -96,12 +98,20 @@ Tools use consistent parameter naming:
 - `get_file_content` supports single file (backward compatible) and multiple files
 - Individual error handling per file in multi-file requests
 - Per-file line limits applied consistently
+- Optional line numbers display with `show_line_numbers` parameter
+
+**README File Discovery:**
+- `get_readme_files` tool finds all README files in repository
+- Supports both non-recursive (root only) and recursive search modes
+- Matches multiple README patterns: README, README.*, readme, readme.*, Readme, Readme.*
+- Provides file metadata: size, modification time, line count
 
 ### Test Structure
 
 Tests are organized into categories matching the Makefile targets:
 - `*_test.go` - Core functionality tests
 - `enhanced_features_test.go` - Tests for new pattern filtering, character count, and multi-file features
+- `readme_line_numbers_test.go` - Tests for README discovery and line numbers functionality
 - `test_helpers.go` - Shared test utilities with `TestRepository` struct
 - `performance_test.go` - Resource usage and concurrency tests
 - `edge_cases_test.go` - Error conditions and boundary cases
