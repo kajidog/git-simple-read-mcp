@@ -153,7 +153,7 @@ func TestHandleSearchFilesEnhanced(t *testing.T) {
 		{
 			name: "filename search",
 			args: SearchFilesParams{
-				Repository:      "", // Will be set in test
+				Repository:      "test-repo",
 				Keywords:        []string{"main"},
 				SearchMode:      "and",
 				IncludeFilename: true,
@@ -175,7 +175,7 @@ func TestHandleSearchFilesEnhanced(t *testing.T) {
 		{
 			name: "content search with context lines",
 			args: SearchFilesParams{
-				Repository:      "", // Will be set in test
+				Repository:      "test-repo",
 				Keywords:        []string{"func"},
 				SearchMode:      "and",
 				IncludeFilename: false,
@@ -199,7 +199,7 @@ func TestHandleSearchFilesEnhanced(t *testing.T) {
 		{
 			name: "OR search mode",
 			args: SearchFilesParams{
-				Repository:      "", // Will be set in test
+				Repository:      "test-repo",
 				Keywords:        []string{"func", "import", "nonexistent"},
 				SearchMode:      "or",
 				IncludeFilename: false,
@@ -221,7 +221,7 @@ func TestHandleSearchFilesEnhanced(t *testing.T) {
 		{
 			name: "combined filename and content search",
 			args: SearchFilesParams{
-				Repository:      "", // Will be set in test
+				Repository:      "test-repo",
 				Keywords:        []string{"main"},
 				SearchMode:      "and",
 				IncludeFilename: true,
@@ -244,31 +244,30 @@ func TestHandleSearchFilesEnhanced(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Setup workspace
-			tempDir := t.TempDir()
-			InitializeWorkspace(tempDir)
+			// This test has a flawed setup. The CreateTestRepositoryWithContent helper
+			// pollutes the global workspace. We work around this by creating our own
+			// clean workspace directory and re-initializing the workspace manager
+			// after the helper has run.
+			workspaceDir := t.TempDir()
+			repo := CreateTestRepositoryWithContent(t) // This pollutes the global workspace.
+
+			// Re-initialize with our clean directory.
+			InitializeWorkspace(workspaceDir)
 			defer func() { globalWorkspaceManager = nil }() // Cleanup
 
-			// Create test repository and copy it to workspace
-			repo := CreateTestRepositoryWithContent(t)
-
-			// Clone the test repository into workspace
-			output, repoName, err := CloneRepository(repo.Path, "test-repo")
+			// Now we can clone from the 'remote' repo path into our clean workspace.
+			_, repoName, err := CloneRepository(repo.Path, "test-repo")
 			if err != nil {
-				t.Fatalf("Failed to clone repo into workspace: %v, output: %s", err, output)
+				t.Fatalf("Failed to clone repo into workspace: %v", err)
 			}
 
 			tt.args.Repository = repoName
 
 			ctx := context.Background()
-			req := &mcp.CallToolRequest{}
-			result, _, err := handleSearchFiles(ctx, req, tt.args)
+			result, _, err := handleSearchFiles(ctx, nil, tt.args)
 
-			if tt.expectError && err == nil {
-				t.Errorf("Expected error but got none")
-			}
-			if !tt.expectError && err != nil {
-				t.Errorf("Expected no error but got: %v", err)
+			if (err != nil) != tt.expectError {
+				t.Errorf("Expected error status %v but got err = %v", tt.expectError, err)
 			}
 
 			if result != nil && tt.checkResult != nil {

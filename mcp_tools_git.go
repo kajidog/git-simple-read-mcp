@@ -394,6 +394,24 @@ func handleCloneRepository(ctx context.Context, req *mcp.CallToolRequest, args C
 
 	output, actualName, err := CloneRepository(args.URL, args.Name)
 	if err != nil {
+		// Check if the error is because the repository already exists
+		if strings.Contains(err.Error(), "already exists in workspace") {
+			// If it exists, pull the latest changes
+			pullOutput, pullErr := PullRepository(actualName)
+			if pullErr != nil {
+				errorMsg := fmt.Sprintf("Repository '%s' already exists but pull failed: %v\nOutput: %s", actualName, pullErr, pullOutput)
+				return &mcp.CallToolResult{
+					Content: []mcp.Content{&mcp.TextContent{Text: errorMsg}},
+					IsError: true,
+				}, nil, nil
+			}
+			resultText := fmt.Sprintf("Repository '%s' already exists. Pulled latest changes:\n%s", actualName, pullOutput)
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{&mcp.TextContent{Text: resultText}},
+			}, nil, nil
+		}
+
+		// Handle other clone errors
 		var errorMsg string
 		if args.Name == "" {
 			errorMsg = fmt.Sprintf("Clone failed for repository '%s' (extracted from URL): %v\nOutput: %s", actualName, err, output)
