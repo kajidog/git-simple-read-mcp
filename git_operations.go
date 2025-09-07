@@ -340,7 +340,7 @@ func CloneRepository(repoURL, repoName string) (string, string, error) {
 
 	// Check if repository already exists
 	if wm.RepositoryExists(repoName) {
-		return "", "", fmt.Errorf("repository '%s' already exists in workspace", repoName)
+		return "", repoName, fmt.Errorf("repository '%s' already exists in workspace", repoName)
 	}
 
 	// Get target path for clone
