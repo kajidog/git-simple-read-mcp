@@ -212,6 +212,28 @@ Each tool accepts JSON parameters:
 }
 ```
 
+#### list_commits
+```json
+{
+  "repository": "my-repo",
+  "limit": 20
+}
+```
+
+**Parameters:**
+- `limit`: Maximum number of commits to return, default: 20
+
+#### get_commit_diff
+```json
+{
+  "repository": "my-repo",
+  "commit_hash": "a1b2c3d4"
+}
+```
+
+**Parameters:**
+- `commit_hash`: The hash of the commit to get the diff for.
+
 #### search_files
 ```json
 {
