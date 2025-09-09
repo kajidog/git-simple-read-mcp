@@ -83,6 +83,18 @@ type GetReadmeFilesParams struct {
 	Recursive  bool   `json:"recursive,omitempty"` // Search subdirectories
 }
 
+// ListCommitsParams parameters for list_commits tool
+type ListCommitsParams struct {
+	Repository string `json:"repository"`
+	Limit      int    `json:"limit,omitempty"`
+}
+
+// GetCommitDiffParams parameters for get_commit_diff tool
+type GetCommitDiffParams struct {
+	Repository string `json:"repository"`
+	CommitHash string `json:"commit_hash"`
+}
+
 // RegisterGitTools registers all Git-related MCP tools
 func RegisterGitTools(server *mcp.Server) {
 	// Repository information tool
@@ -150,6 +162,17 @@ func RegisterGitTools(server *mcp.Server) {
 		Name:        "get_readme_files",
 		Description: "Find and list all README files in the repository with optional recursive search",
 	}, handleGetReadmeFiles)
+
+	// Add new tools for commit history and diff
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "list_commits",
+		Description: "List the commit history for a repository",
+	}, handleListCommits)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "get_commit_diff",
+		Description: "Get the diff for a specific commit, including the commit message",
+	}, handleGetCommitDiff)
 }
 
 func handleGetRepositoryInfo(ctx context.Context, req *mcp.CallToolRequest, args GetRepositoryInfoParams) (*mcp.CallToolResult, any, error) {
@@ -543,6 +566,94 @@ func formatRepositoryInfo(info *RepositoryInfo) string {
 		}
 	}
 
+	return result.String()
+}
+
+func handleListCommits(ctx context.Context, req *mcp.CallToolRequest, args ListCommitsParams) (*mcp.CallToolResult, any, error) {
+	if args.Repository == "" {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "Error: repository path is required"}},
+			IsError: true,
+		}, nil, nil
+	}
+
+	limit := args.Limit
+	if limit == 0 {
+		limit = 20 // Default limit
+	}
+
+	commits, err := ListCommits(args.Repository, limit)
+	if err != nil {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Failed to list commits: %v", err)}},
+			IsError: true,
+		}, nil, nil
+	}
+
+	resultText := formatCommits(commits, limit)
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: resultText}},
+	}, nil, nil
+}
+
+func handleGetCommitDiff(ctx context.Context, req *mcp.CallToolRequest, args GetCommitDiffParams) (*mcp.CallToolResult, any, error) {
+	if args.Repository == "" {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "Error: repository path is required"}},
+			IsError: true,
+		}, nil, nil
+	}
+	if args.CommitHash == "" {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "Error: commit_hash is required"}},
+			IsError: true,
+		}, nil, nil
+	}
+
+	diff, err := GetCommitDiff(args.Repository, args.CommitHash)
+	if err != nil {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Failed to get commit diff: %v", err)}},
+			IsError: true,
+		}, nil, nil
+	}
+
+	resultText := formatCommitDiff(args.CommitHash, diff)
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: resultText}},
+	}, nil, nil
+}
+
+func formatCommits(commits []Commit, limit int) string {
+	var result strings.Builder
+
+	result.WriteString(fmt.Sprintf("Commit History (%d commits):\n", len(commits)))
+	result.WriteString(strings.Repeat("=", 50) + "\n\n")
+
+	if len(commits) == 0 {
+		result.WriteString("No commits found.\n")
+		return result.String()
+	}
+
+	for _, commit := range commits {
+		result.WriteString(fmt.Sprintf("commit %s\n", commit.Hash))
+		result.WriteString(fmt.Sprintf("Author: %s\n", commit.Author))
+		result.WriteString(fmt.Sprintf("Date:   %s\n", commit.Date))
+		result.WriteString(fmt.Sprintf("\n    %s\n\n", commit.Message))
+	}
+
+	if len(commits) == limit {
+		result.WriteString(fmt.Sprintf("(Limited to %d commits)\n", limit))
+	}
+
+	return result.String()
+}
+
+func formatCommitDiff(commitHash, diff string) string {
+	var result strings.Builder
+	result.WriteString(fmt.Sprintf("Diff for commit %s:\n", commitHash))
+	result.WriteString(strings.Repeat("=", 50) + "\n\n")
+	result.WriteString(diff)
 	return result.String()
 }
 

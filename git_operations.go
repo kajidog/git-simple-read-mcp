@@ -30,6 +30,14 @@ type Branch struct {
 	LastCommit string `json:"last_commit,omitempty"`
 }
 
+// Commit represents a git commit
+type Commit struct {
+	Hash    string `json:"hash"`
+	Author  string `json:"author"`
+	Date    string `json:"date"`
+	Message string `json:"message"`
+}
+
 // SearchResult represents a file search result
 type SearchResult struct {
 	Path      string      `json:"path"`
@@ -121,6 +129,76 @@ func PullRepository(repoPath string) (string, error) {
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return string(output), fmt.Errorf("git pull failed: %v", err)
+	}
+
+	return string(output), nil
+}
+
+// ListCommits lists commits in the repository
+func ListCommits(repoPath string, limit int) ([]Commit, error) {
+	validPath, err := ValidateWorkspacePath(repoPath)
+	if err != nil {
+		return nil, err
+	}
+	repoPath = validPath
+
+	if !isGitRepository(repoPath) {
+		return nil, fmt.Errorf("not a git repository: %s", repoPath)
+	}
+
+	args := []string{"log", "--pretty=format:%H|%an|%ad|%s", "--date=iso"}
+	if limit > 0 {
+		args = append(args, fmt.Sprintf("--max-count=%d", limit))
+	}
+
+	cmd := exec.Command("git", args...)
+	cmd.Dir = repoPath
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list commits: %v", err)
+	}
+
+	var commits []Commit
+	scanner := bufio.NewScanner(strings.NewReader(string(output)))
+	for scanner.Scan() {
+		line := scanner.Text()
+		parts := strings.SplitN(line, "|", 4)
+		if len(parts) == 4 {
+			commit := Commit{
+				Hash:    parts[0],
+				Author:  parts[1],
+				Date:    parts[2],
+				Message: parts[3],
+			}
+			commits = append(commits, commit)
+		}
+	}
+
+	return commits, nil
+}
+
+// GetCommitDiff gets the diff for a specific commit
+func GetCommitDiff(repoPath, commitHash string) (string, error) {
+	validPath, err := ValidateWorkspacePath(repoPath)
+	if err != nil {
+		return "", err
+	}
+	repoPath = validPath
+
+	if !isGitRepository(repoPath) {
+		return "", fmt.Errorf("not a git repository: %s", repoPath)
+	}
+
+	// Basic validation for commit hash
+	if len(commitHash) < 4 || len(commitHash) > 40 {
+		return "", fmt.Errorf("invalid commit hash format")
+	}
+
+	cmd := exec.Command("git", "show", commitHash)
+	cmd.Dir = repoPath
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return string(output), fmt.Errorf("git show failed for commit '%s': %v", commitHash, err)
 	}
 
 	return string(output), nil
