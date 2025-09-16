@@ -54,11 +54,12 @@ type ListFilesParams struct {
 
 // GetFileContentParams parameters for get_file_content tool
 type GetFileContentParams struct {
-	Repository  string   `json:"repository"`
-	FilePath    string   `json:"file_path,omitempty"`    // Single file path (for backward compatibility)
-	FilePaths   []string `json:"file_paths,omitempty"`   // Multiple file paths
-	MaxLines    int      `json:"max_lines,omitempty"`    // Max lines per file
-	ShowLineNumbers bool `json:"show_line_numbers,omitempty"` // Show line numbers in output
+	Repository      string   `json:"repository"`
+	FilePath        string   `json:"file_path,omitempty"`    // Single file path (for backward compatibility)
+	FilePaths       []string `json:"file_paths,omitempty"`   // Multiple file paths
+	MaxLines        int      `json:"max_lines,omitempty"`    // Max lines per file
+	StartLine       int      `json:"start_line,omitempty"`   // Line to start reading from (1-based)
+	ShowLineNumbers bool     `json:"show_line_numbers,omitempty"` // Show line numbers in output
 }
 
 // CloneRepositoryParams parameters for clone_repository tool
@@ -376,27 +377,43 @@ func handleGetFileContent(ctx context.Context, req *mcp.CallToolRequest, args Ge
 		maxLines = 100
 	}
 
+	// Handle start_line, ensuring it's at least 1
+	startLine := args.StartLine
+	if startLine < 1 {
+		startLine = 1
+	}
+
 	if len(filePaths) == 1 {
-		// Single file - maintain backward compatibility
-		content, err := GetFileContentWithLineNumbers(args.Repository, filePaths[0], maxLines, args.ShowLineNumbers)
+		// Single file
+		result, err := GetFileContentWithLineNumbers(args.Repository, filePaths[0], maxLines, startLine, args.ShowLineNumbers)
 		if err != nil {
+			// Ensure we always have a result object for consistent error formatting
+			if result == nil {
+				result = &FileContentResult{
+					FilePath: filePaths[0],
+					Error:    err.Error(),
+				}
+			} else if result.Error == "" {
+				result.Error = err.Error()
+			}
 			return &mcp.CallToolResult{
-				Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Failed to get file content: %v", err)}},
+				Content: []mcp.Content{&mcp.TextContent{Text: formatSingleFileContent(*result)}},
 				IsError: true,
 			}, nil, nil
 		}
 
-		resultText := fmt.Sprintf("Content of %s:\n```\n%s```", filePaths[0], content)
+		resultText := formatSingleFileContent(*result)
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{&mcp.TextContent{Text: resultText}},
 		}, nil, nil
 	} else {
 		// Multiple files
-		results, err := GetMultipleFileContentsWithLineNumbers(args.Repository, filePaths, maxLines, args.ShowLineNumbers)
+		results, err := GetMultipleFileContentsWithLineNumbers(args.Repository, filePaths, maxLines, startLine, args.ShowLineNumbers)
 		if err != nil {
+			// The call returns partial results, so we format them anyway
 			return &mcp.CallToolResult{
-				Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Failed to get file contents: %v", err)}},
-				IsError: true,
+				Content: []mcp.Content{&mcp.TextContent{Text: formatMultipleFileContents(results)}},
+				IsError: true, // Mark as error despite sending content
 			}, nil, nil
 		}
 
@@ -803,6 +820,38 @@ func formatWorkspaceRepositories(repositories []string, workspaceDir string) str
 	return result.String()
 }
 
+func formatSingleFileContent(result FileContentResult) string {
+	var builder strings.Builder
+
+	// Header
+	header := fmt.Sprintf("Content of %s (lines %d-%d of %d)", result.FilePath, result.StartLine, result.EndLine, result.TotalLines)
+	if result.Error != "" {
+		header = fmt.Sprintf("Error for %s", result.FilePath)
+	}
+	builder.WriteString(header + "\n")
+	builder.WriteString(strings.Repeat("=", len(header)) + "\n\n")
+
+	if result.Error != "" {
+		builder.WriteString(fmt.Sprintf("❌ Error: %s\n", result.Error))
+	}
+
+	if result.Content != "" {
+		builder.WriteString("```\n")
+		builder.WriteString(result.Content)
+		if !strings.HasSuffix(result.Content, "\n") {
+			builder.WriteString("\n")
+		}
+		builder.WriteString("```\n")
+	} else if result.Error == "" {
+		builder.WriteString("No content to display.\n")
+		if result.StartLine > result.TotalLines && result.TotalLines > 0 {
+			builder.WriteString(fmt.Sprintf("Note: Start line (%d) is beyond the end of the file (%d lines).\n", result.StartLine, result.TotalLines))
+		}
+	}
+
+	return builder.String()
+}
+
 func formatMultipleFileContents(results []FileContentResult) string {
 	var result strings.Builder
 
@@ -814,7 +863,12 @@ func formatMultipleFileContents(results []FileContentResult) string {
 			result.WriteString("\n" + strings.Repeat("-", 40) + "\n\n")
 		}
 
-		result.WriteString(fmt.Sprintf("📄 %s\n", fileResult.FilePath))
+		// Header
+		header := fmt.Sprintf("📄 %s (lines %d-%d of %d)", fileResult.FilePath, fileResult.StartLine, fileResult.EndLine, fileResult.TotalLines)
+		if fileResult.Error != "" {
+			header = fmt.Sprintf("📄 %s", fileResult.FilePath)
+		}
+		result.WriteString(header + "\n")
 
 		if fileResult.Error != "" {
 			result.WriteString(fmt.Sprintf("❌ Error: %s\n", fileResult.Error))
@@ -825,6 +879,9 @@ func formatMultipleFileContents(results []FileContentResult) string {
 				result.WriteString("\n")
 			}
 			result.WriteString("```\n")
+			if fileResult.StartLine > fileResult.TotalLines && fileResult.TotalLines > 0 {
+				result.WriteString(fmt.Sprintf("Note: Start line (%d) is beyond the end of the file (%d lines).\n", fileResult.StartLine, fileResult.TotalLines))
+			}
 		}
 	}
 

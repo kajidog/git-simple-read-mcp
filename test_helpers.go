@@ -153,11 +153,17 @@ func (tr *TestRepository) AddCommit(message string) {
 
 // CreateLargeFile creates a large file for testing file size limits
 func (tr *TestRepository) CreateLargeFile(filename string, sizeKB int) {
-	content := make([]byte, sizeKB*1024)
-	for i := range content {
-		content[i] = byte('A' + (i % 26))
+	var contentBuilder strings.Builder
+	sizeBytes := sizeKB * 1024
+	contentBuilder.Grow(sizeBytes)
+	for i := 0; i < sizeBytes; i++ {
+		contentBuilder.WriteByte(byte('A' + (i % 26)))
+		// Add newlines to prevent "token too long" errors in scanner
+		if i > 0 && i%100 == 0 {
+			contentBuilder.WriteByte('\n')
+		}
 	}
-	tr.WriteFile(filename, string(content))
+	tr.WriteFile(filename, contentBuilder.String())
 }
 
 // CreateManyFiles creates many files for testing pagination

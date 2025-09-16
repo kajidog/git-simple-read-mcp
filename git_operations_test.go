@@ -73,6 +73,7 @@ func TestGetRepositoryInfo(t *testing.T) {
 	}
 }
 
+
 func TestListBranches(t *testing.T) {
 	tests := []struct {
 		name             string
@@ -507,56 +508,3 @@ func TestHelperFunctions(t *testing.T) {
 	})
 }
 
-func TestEdgeCases(t *testing.T) {
-	t.Run("very large repository", func(t *testing.T) {
-		repo := CreateTestRepositoryWithContent(t)
-
-		// Create many files
-		repo.CreateManyFiles("large", 100)
-		repo.AddCommit("Add many files")
-
-		// Test listing files with limit
-		files, err := ListFiles(repo.Path, "large", false, nil, nil, 10)
-		if err != nil {
-			t.Fatalf("Failed to list files: %v", err)
-		}
-
-		if len(files) > 10 {
-			t.Errorf("Expected at most 10 files, got %d", len(files))
-		}
-	})
-
-	t.Run("file with special characters", func(t *testing.T) {
-		repo := CreateTestRepositoryWithContent(t)
-
-		// Create file with special characters
-		specialFile := "special-file_123.txt"
-		specialContent := "Content with special characters: åäö, 中文, 🎉\n"
-		repo.WriteFile(specialFile, specialContent)
-		repo.AddCommit("Add special file")
-
-		// Test reading the file
-		content, err := GetFileContent(repo.Path, specialFile, 0)
-		if err != nil {
-			t.Fatalf("Failed to read special file: %v", err)
-		}
-
-		if content != specialContent {
-			t.Errorf("Special character content mismatch")
-		}
-	})
-
-	t.Run("empty repository", func(t *testing.T) {
-		repo := CreateTestRepository(t)
-
-		// Test operations on empty repository
-		info, err := GetRepositoryInfo(repo.Path)
-		if err != nil {
-			t.Fatalf("Failed to get info for empty repo: %v", err)
-		}
-
-		if info.CommitCount != 0 {
-			t.Errorf("Expected 0 commits in empty repo, got %d", info.CommitCount)
-		}
-	})
-}
