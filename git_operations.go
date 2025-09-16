@@ -116,12 +116,13 @@ func PullRepository(repoPath string) (string, error) {
 	// Validate workspace path
 	validPath, err := ValidateWorkspacePath(repoPath)
 	if err != nil {
-		return "", err
+		return err.Error(), err
 	}
 	repoPath = validPath
 
 	if !isGitRepository(repoPath) {
-		return "", fmt.Errorf("not a git repository: %s", repoPath)
+		err := fmt.Errorf("not a git repository: %s", repoPath)
+		return err.Error(), err
 	}
 
 	cmd := exec.Command("git", "pull")
@@ -478,11 +479,14 @@ func extractRepoNameFromURL(repoURL string) (string, error) {
 	return repoName, nil
 }
 
-// FileContentResult represents the content of a single file
+// FileContentResult represents the content of a single file, with metadata
 type FileContentResult struct {
-	FilePath string `json:"file_path"`
-	Content  string `json:"content"`
-	Error    string `json:"error,omitempty"`
+	FilePath   string `json:"file_path"`
+	Content    string `json:"content"`
+	TotalLines int    `json:"total_lines"`
+	StartLine  int    `json:"start_line"`
+	EndLine    int    `json:"end_line"`
+	Error      string `json:"error,omitempty"`
 }
 
 // ReadmeFileInfo represents information about a README file
@@ -556,46 +560,77 @@ func GetMultipleFileContents(repoPath string, filePaths []string, maxLines int) 
 	return results, nil
 }
 
-// GetFileContentWithLineNumbers reads the content of a file with optional line numbers
-func GetFileContentWithLineNumbers(repoPath, filePath string, maxLines int, showLineNumbers bool) (string, error) {
+// GetFileContentWithLineNumbers reads the content of a file with optional line numbers and start line
+func GetFileContentWithLineNumbers(repoPath, filePath string, maxLines, startLine int, showLineNumbers bool) (*FileContentResult, error) {
 	// Validate workspace path
 	validPath, err := ValidateWorkspacePath(repoPath)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	repoPath = validPath
 
 	fullPath := filepath.Join(repoPath, filePath)
 
+	// First, get total line count
+	_, totalLines := countFileCharacters(fullPath)
+
 	file, err := os.Open(fullPath)
 	if err != nil {
-		return "", fmt.Errorf("failed to open file: %v", err)
+		return nil, fmt.Errorf("failed to open file: %v", err)
 	}
 	defer file.Close()
 
+	result := &FileContentResult{
+		FilePath:   filePath,
+		TotalLines: totalLines,
+		StartLine:  startLine,
+		EndLine:    startLine - 1, // Initialize to line before start
+	}
+
 	var content strings.Builder
 	scanner := bufio.NewScanner(file)
-	lineCount := 0
+	currentLine := 0
+	linesRead := 0
 
-	for scanner.Scan() && (maxLines == 0 || lineCount < maxLines) {
-		lineCount++
-		if showLineNumbers {
-			content.WriteString(fmt.Sprintf("%4d: %s\n", lineCount, scanner.Text()))
+	// Skip to startLine
+	for scanner.Scan() {
+		currentLine++
+		if currentLine < startLine {
+			continue
+		}
+
+		// Read content
+		if maxLines == 0 || linesRead < maxLines {
+			if showLineNumbers {
+				content.WriteString(fmt.Sprintf("%4d: %s\n", currentLine, scanner.Text()))
+			} else {
+				content.WriteString(scanner.Text())
+				content.WriteString("\n")
+			}
+			linesRead++
+			result.EndLine = currentLine // Update EndLine for each line read
 		} else {
-			content.WriteString(scanner.Text())
-			content.WriteString("\n")
+			break
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		return "", fmt.Errorf("failed to read file: %v", err)
+		result.Error = fmt.Sprintf("failed to read file: %v", err)
+		return result, err
 	}
 
-	return content.String(), nil
+	result.Content = content.String()
+	// Special case for start_line beyond the end of the file
+	if linesRead == 0 && startLine > totalLines && totalLines > 0 {
+		result.EndLine = totalLines
+	}
+
+
+	return result, nil
 }
 
-// GetMultipleFileContentsWithLineNumbers reads the content of multiple files with optional line numbers
-func GetMultipleFileContentsWithLineNumbers(repoPath string, filePaths []string, maxLines int, showLineNumbers bool) ([]FileContentResult, error) {
+// GetMultipleFileContentsWithLineNumbers reads the content of multiple files with optional line numbers and start line
+func GetMultipleFileContentsWithLineNumbers(repoPath string, filePaths []string, maxLines, startLine int, showLineNumbers bool) ([]FileContentResult, error) {
 	// Validate workspace path
 	validPath, err := ValidateWorkspacePath(repoPath)
 	if err != nil {
@@ -606,18 +641,23 @@ func GetMultipleFileContentsWithLineNumbers(repoPath string, filePaths []string,
 	var results []FileContentResult
 
 	for _, filePath := range filePaths {
-		result := FileContentResult{
-			FilePath: filePath,
-		}
-
-		content, err := GetFileContentWithLineNumbers(repoPath, filePath, maxLines, showLineNumbers)
+		result, err := GetFileContentWithLineNumbers(repoPath, filePath, maxLines, startLine, showLineNumbers)
 		if err != nil {
-			result.Error = err.Error()
-		} else {
-			result.Content = content
+			// Even on error, we might have a partial result object to append
+			if result != nil {
+				if result.Error == "" {
+					result.Error = err.Error()
+				}
+				results = append(results, *result)
+			} else {
+				results = append(results, FileContentResult{
+					FilePath: filePath,
+					Error:    err.Error(),
+				})
+			}
+			continue
 		}
-
-		results = append(results, result)
+		results = append(results, *result)
 	}
 
 	return results, nil
@@ -732,8 +772,12 @@ func GetReadmeFiles(repoPath string, recursive bool) ([]ReadmeFileInfo, error) {
 
 func isGitRepository(path string) bool {
 	gitDir := filepath.Join(path, ".git")
-	if stat, err := os.Stat(gitDir); err == nil {
-		return stat.IsDir()
+	if stat, err := os.Stat(gitDir); err == nil && stat.IsDir() {
+		// Also check for HEAD file for a more robust check
+		headFile := filepath.Join(gitDir, "HEAD")
+		if _, err := os.Stat(headFile); err == nil {
+			return true
+		}
 	}
 	return false
 }

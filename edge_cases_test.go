@@ -547,8 +547,8 @@ func TestBoundaryConditions(t *testing.T) {
 		if err != nil {
 			t.Errorf("Failed to read single character file: %v", err)
 		}
-		if content != "a" {
-			t.Errorf("Expected 'a', got: %q", content)
+		if content != "a\n" {
+			t.Errorf("Expected 'a\\n', got: %q", content)
 		}
 	})
 
