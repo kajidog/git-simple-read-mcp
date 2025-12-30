@@ -47,13 +47,24 @@ Supports both stdio (default) and HTTP transports for maximum compatibility.`,
 
 		case "http":
 			// Use HTTP transport
-			handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
+			mcpHandler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
 				return server
 			}, nil)
 
+			// Create mux for routing
+			mux := http.NewServeMux()
+			mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte("ok"))
+			})
+			mux.Handle("/mcp", mcpHandler)
+			mux.Handle("/mcp/", mcpHandler)
+
 			address := fmt.Sprintf("%s:%d", host, port)
 			fmt.Printf("Starting Git Remote MCP server on %s\n", address)
-			return http.ListenAndServe(address, handler)
+			fmt.Printf("  MCP endpoint: http://%s/mcp\n", address)
+			fmt.Printf("  Health check: http://%s/health\n", address)
+			return http.ListenAndServe(address, mux)
 
 		default:
 			fmt.Fprintf(cmd.ErrOrStderr(), "Error: Unsupported transport: %s\n", transport)
