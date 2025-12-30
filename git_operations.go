@@ -63,6 +63,13 @@ type FileInfo struct {
 	LineCount int       `json:"line_count,omitempty"` // Line count for text files
 }
 
+// RepositoryStatus represents the current status of a repository
+type RepositoryStatus struct {
+	CurrentBranch string `json:"current_branch"`
+	HasChanges    bool   `json:"has_changes"`
+	StatusOutput  string `json:"status_output,omitempty"`
+}
+
 // GetRepositoryInfo retrieves basic repository information
 func GetRepositoryInfo(repoPath string) (*RepositoryInfo, error) {
 	// Validate workspace path
@@ -109,6 +116,41 @@ func GetRepositoryInfo(repoPath string) (*RepositoryInfo, error) {
 	}
 
 	return info, nil
+}
+
+// GetRepositoryStatus returns the current status of a repository
+func GetRepositoryStatus(repoPath string) (*RepositoryStatus, error) {
+	// Validate workspace path
+	validPath, err := ValidateWorkspacePath(repoPath)
+	if err != nil {
+		return nil, err
+	}
+	repoPath = validPath
+
+	if !isGitRepository(repoPath) {
+		return nil, fmt.Errorf("not a git repository: %s", repoPath)
+	}
+
+	status := &RepositoryStatus{}
+
+	// Get current branch
+	if branch, err := getCurrentBranch(repoPath); err == nil {
+		status.CurrentBranch = branch
+	}
+
+	// Get git status (porcelain format for easy parsing)
+	cmd := exec.Command("git", "status", "--porcelain")
+	cmd.Dir = repoPath
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get git status: %v", err)
+	}
+
+	statusOutput := strings.TrimSpace(string(output))
+	status.StatusOutput = statusOutput
+	status.HasChanges = len(statusOutput) > 0
+
+	return status, nil
 }
 
 // PullRepository executes git pull on the specified repository

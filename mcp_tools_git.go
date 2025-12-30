@@ -10,7 +10,13 @@ import (
 
 // GetRepositoryInfoParams parameters for get_repository_info tool
 type GetRepositoryInfoParams struct {
-	Repository string `json:"repository"`
+	Repository         string   `json:"repository,omitempty"`
+	IncludeFiles       bool     `json:"include_files,omitempty"`        // Include file list (like explore_repository)
+	IncludeReadmeFiles bool     `json:"include_readme_files,omitempty"` // Include README file list
+	FileListLimit      int      `json:"file_list_limit,omitempty"`      // Limit for file list (default: 50)
+	Recursive          bool     `json:"recursive,omitempty"`            // Recursive file listing
+	IncludePatterns    []string `json:"include_patterns,omitempty"`     // File patterns to include
+	ExcludePatterns    []string `json:"exclude_patterns,omitempty"`     // File patterns to exclude
 }
 
 // PullRepositoryParams parameters for pull_repository tool
@@ -32,7 +38,8 @@ type SwitchBranchParams struct {
 
 // SearchFilesParams parameters for search_files tool
 type SearchFilesParams struct {
-	Repository      string   `json:"repository"`
+	Repository      string   `json:"repository,omitempty"`       // Single repository (uses session default if empty)
+	Repositories    []string `json:"repositories,omitempty"`     // Multiple repositories for cross-repo search
 	Keywords        []string `json:"keywords"`
 	SearchMode      string   `json:"search_mode,omitempty"`      // "and" or "or", defaults to "and"
 	IncludeFilename bool     `json:"include_filename,omitempty"` // search in filenames too, defaults to false
@@ -54,23 +61,27 @@ type ListFilesParams struct {
 
 // GetFileContentParams parameters for get_file_content tool
 type GetFileContentParams struct {
-	Repository      string   `json:"repository"`
-	FilePath        string   `json:"file_path,omitempty"`        // Single file path (for backward compatibility)
-	FilePaths       []string `json:"file_paths,omitempty"`       // Multiple file paths
-	StartLine       int      `json:"start_line,omitempty"`       // Start reading from this line (1-based, default: 1)
-	MaxLines        int      `json:"max_lines,omitempty"`        // Max lines per file
-	ShowLineNumbers bool     `json:"show_line_numbers,omitempty"` // Show line numbers (default: true)
+	Repository string   `json:"repository"`
+	FilePath   string   `json:"file_path,omitempty"`  // Single file path (for backward compatibility)
+	FilePaths  []string `json:"file_paths,omitempty"` // Multiple file paths
+	StartLine  int      `json:"start_line,omitempty"` // Start reading from this line (1-based, default: 1)
+	EndLine    int      `json:"end_line,omitempty"`   // End line (inclusive, default: start_line + 100)
+	MaxLines   int      `json:"max_lines,omitempty"`  // Deprecated: use end_line instead
 }
 
 // CloneRepositoryParams parameters for clone_repository tool
 type CloneRepositoryParams struct {
-	URL  string `json:"url"`
-	Name string `json:"name,omitempty"` // Optional: will be extracted from URL if not provided
+	URL             string `json:"url"`
+	Name            string `json:"name,omitempty"`             // Optional: will be extracted from URL if not provided
+	IncludeInfo     bool   `json:"include_info,omitempty"`     // Include repository info after clone
+	IncludeBranches bool   `json:"include_branches,omitempty"` // Include branch list after clone
 }
 
 // ListWorkspaceRepositoriesParams parameters for list_workspace_repositories tool
 type ListWorkspaceRepositoriesParams struct {
-	// No parameters needed
+	IncludeStatus  bool `json:"include_status,omitempty"`  // Include git status for each repo
+	IncludeCommits bool `json:"include_commits,omitempty"` // Include recent commits for each repo
+	CommitLimit    int  `json:"commit_limit,omitempty"`    // Number of commits to include (default: 5)
 }
 
 // RemoveRepositoryParams parameters for remove_repository tool
@@ -96,12 +107,61 @@ type GetCommitDiffParams struct {
 	CommitHash string `json:"commit_hash"`
 }
 
+// SessionParams parameters for session tool (unified set/get/clear)
+type SessionParams struct {
+	Action                 string   `json:"action"`                            // "set", "get", or "clear"
+	DefaultRepository      string   `json:"default_repository,omitempty"`      // for "set"
+	DefaultIncludePatterns []string `json:"default_include_patterns,omitempty"` // for "set"
+	DefaultExcludePatterns []string `json:"default_exclude_patterns,omitempty"` // for "set"
+	DefaultSearchLimit     int      `json:"default_search_limit,omitempty"`     // for "set"
+	DefaultListFilesLimit  int      `json:"default_list_files_limit,omitempty"` // for "set"
+	DefaultMaxLines        int      `json:"default_max_lines,omitempty"`        // for "set"
+	DefaultCommitLimit     int      `json:"default_commit_limit,omitempty"`     // for "set"
+}
+
+// BatchParams parameters for batch tool (unified clone/pull/status)
+type BatchParams struct {
+	Operation    string              `json:"operation"`              // "clone", "pull", or "status"
+	URLs         []string            `json:"urls,omitempty"`         // for "clone" - list of URLs to clone
+	Repositories []string            `json:"repositories,omitempty"` // for "pull"/"status" - empty = all repos
+}
+
+// BatchResult result for batch operations
+type BatchResult struct {
+	Name      string `json:"name"`
+	URL       string `json:"url,omitempty"`
+	Success   bool   `json:"success"`
+	Message   string `json:"message,omitempty"`
+	Branch    string `json:"branch,omitempty"`
+	HasChanges bool   `json:"has_changes,omitempty"`
+	Error     string `json:"error,omitempty"`
+}
+
+// RepositoryOverview overview of a single repository (used by list_repositories)
+type RepositoryOverview struct {
+	Name          string   `json:"name"`
+	CurrentBranch string   `json:"current_branch"`
+	HasChanges    bool     `json:"has_changes"`
+	RemoteURL     string   `json:"remote_url,omitempty"`
+	RecentCommits []Commit `json:"recent_commits,omitempty"`
+	BranchCount   int      `json:"branch_count,omitempty"`
+	Error         string   `json:"error,omitempty"`
+}
+
+// RepoSearchResult result for cross-repository search (used by search_files)
+type RepoSearchResult struct {
+	Repository string         `json:"repository"`
+	Results    []SearchResult `json:"results"`
+	TotalCount int            `json:"total_count"`
+	Error      string         `json:"error,omitempty"`
+}
+
 // RegisterGitTools registers all Git-related MCP tools
 func RegisterGitTools(server *mcp.Server) {
-	// Repository information tool
+	// Repository information tool (extended with explore functionality)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_repository_info",
-		Description: "Get basic repository information including commit count, last update, current branch, license, and README content",
+		Description: "Get repository info. Options: include_files (list files), include_readme_files (find READMEs), recursive, file_list_limit, include/exclude_patterns",
 	}, handleGetRepositoryInfo)
 
 	// Repository pull tool
@@ -122,10 +182,10 @@ func RegisterGitTools(server *mcp.Server) {
 		Description: "Switch to the specified branch in the repository",
 	}, handleSwitchBranch)
 
-	// Search files tool
+	// Search files tool (extended with cross-repo search)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "search_files",
-		Description: "Search for files containing specified keywords in content and/or filenames with AND/OR logic, context lines, and pagination",
+		Description: "Search files for keywords. Use 'repositories' array for cross-repo search. Options: search_mode (and/or), include_filename, context_lines, include/exclude_patterns",
 	}, handleSearchFiles)
 
 	// List files tool
@@ -137,19 +197,19 @@ func RegisterGitTools(server *mcp.Server) {
 	// Get file content tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_file_content",
-		Description: "Get the content of a specific file with optional line limit",
+		Description: "Get file content. Use start_line and end_line for line range (e.g., start_line=100, end_line=200)",
 	}, handleGetFileContent)
 
-	// Clone repository tool
+	// Clone repository tool (extended with setup functionality)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "clone_repository",
-		Description: "Clone a Git repository into the workspace",
+		Description: "Clone a repository. Options: include_info (get repo info), include_branches (list branches after clone)",
 	}, handleCloneRepository)
 
-	// List workspace repositories tool
+	// List workspace repositories tool (extended with overview functionality)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_repositories",
-		Description: "List all repositories in the workspace",
+		Description: "List repositories. Options: include_status (git status), include_commits (recent commits), commit_limit",
 	}, handleListWorkspaceRepositories)
 
 	// Remove repository tool
@@ -174,17 +234,35 @@ func RegisterGitTools(server *mcp.Server) {
 		Name:        "get_commit_diff",
 		Description: "Get the diff for a specific commit, including the commit message",
 	}, handleGetCommitDiff)
+
+	// Session tool (unified set/get/clear)
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "session",
+		Description: "Manage session config. action: 'set' (set defaults), 'get' (view config), 'clear' (reset). For 'set': default_repository, default_include/exclude_patterns, default_*_limit",
+	}, handleSession)
+
+	// Batch tool (unified clone/pull/status)
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "batch",
+		Description: "Batch operations. operation: 'clone' (urls array), 'pull' (repositories array, empty=all), 'status' (repositories array, empty=all)",
+	}, handleBatch)
 }
 
 func handleGetRepositoryInfo(ctx context.Context, req *mcp.CallToolRequest, args GetRepositoryInfoParams) (*mcp.CallToolResult, any, error) {
-	if args.Repository == "" {
+	sc := GetSessionConfig()
+	repository := sc.GetRepository(args.Repository)
+
+	if repository == "" {
 		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: "Error: repository path is required"}},
+			Content: []mcp.Content{&mcp.TextContent{Text: "Error: repository required (no default set)"}},
 			IsError: true,
 		}, nil, nil
 	}
 
-	info, err := GetRepositoryInfo(args.Repository)
+	var result strings.Builder
+
+	// Get basic repository info
+	info, err := GetRepositoryInfo(repository)
 	if err != nil {
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Failed to get repository info: %v", err)}},
@@ -192,9 +270,78 @@ func handleGetRepositoryInfo(ctx context.Context, req *mcp.CallToolRequest, args
 		}, nil, nil
 	}
 
-	resultText := formatRepositoryInfo(info)
+	result.WriteString(fmt.Sprintf("Repository: %s\n", info.Path))
+	result.WriteString(strings.Repeat("=", 50) + "\n\n")
+	result.WriteString(fmt.Sprintf("Branch: %s\n", info.CurrentBranch))
+	result.WriteString(fmt.Sprintf("Commits: %d\n", info.CommitCount))
+	if !info.LastUpdate.IsZero() {
+		result.WriteString(fmt.Sprintf("Updated: %s\n", info.LastUpdate.Format("2006-01-02 15:04:05")))
+	}
+	if info.RemoteURL != "" {
+		result.WriteString(fmt.Sprintf("Remote: %s\n", info.RemoteURL))
+	}
+	if info.License != "" {
+		result.WriteString(fmt.Sprintf("License: %s\n", info.License))
+	}
+
+	// Include file list if requested
+	if args.IncludeFiles {
+		result.WriteString("\n## Files\n")
+		limit := args.FileListLimit
+		if limit == 0 {
+			limit = sc.GetListFilesLimit(0)
+		}
+		includePatterns := sc.GetIncludePatterns(args.IncludePatterns)
+		excludePatterns := sc.GetExcludePatterns(args.ExcludePatterns)
+
+		files, err := ListFiles(repository, ".", args.Recursive, includePatterns, excludePatterns, limit)
+		if err != nil {
+			result.WriteString(fmt.Sprintf("Error: %v\n", err))
+		} else {
+			for _, file := range files {
+				if file.IsDir {
+					result.WriteString(fmt.Sprintf("  📁 %s/\n", file.Path))
+				} else {
+					result.WriteString(fmt.Sprintf("  📄 %s\n", file.Path))
+				}
+			}
+			if len(files) == limit {
+				result.WriteString(fmt.Sprintf("  (Limited to %d)\n", limit))
+			}
+		}
+	}
+
+	// Include README files if requested
+	if args.IncludeReadmeFiles {
+		result.WriteString("\n## README Files\n")
+		readmeFiles, err := GetReadmeFiles(repository, args.Recursive)
+		if err != nil {
+			result.WriteString(fmt.Sprintf("Error: %v\n", err))
+		} else if len(readmeFiles) == 0 {
+			result.WriteString("  No README files found\n")
+		} else {
+			for _, readme := range readmeFiles {
+				result.WriteString(fmt.Sprintf("  📄 %s", readme.Path))
+				if readme.LineCount > 0 {
+					result.WriteString(fmt.Sprintf(" (%d lines)", readme.LineCount))
+				}
+				result.WriteString("\n")
+			}
+		}
+	}
+
+	// Include main README content
+	if info.ReadmeContent != "" && !args.IncludeFiles && !args.IncludeReadmeFiles {
+		result.WriteString("\n## README\n")
+		result.WriteString(strings.Repeat("-", 30) + "\n")
+		result.WriteString(info.ReadmeContent)
+		if !strings.HasSuffix(info.ReadmeContent, "\n") {
+			result.WriteString("\n")
+		}
+	}
+
 	return &mcp.CallToolResult{
-		Content: []mcp.Content{&mcp.TextContent{Text: resultText}},
+		Content: []mcp.Content{&mcp.TextContent{Text: result.String()}},
 	}, nil, nil
 }
 
@@ -277,13 +424,6 @@ func handleSwitchBranch(ctx context.Context, req *mcp.CallToolRequest, args Swit
 }
 
 func handleSearchFiles(ctx context.Context, req *mcp.CallToolRequest, args SearchFilesParams) (*mcp.CallToolResult, any, error) {
-	if args.Repository == "" {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: "Error: repository path is required"}},
-			IsError: true,
-		}, nil, nil
-	}
-
 	if len(args.Keywords) == 0 {
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{&mcp.TextContent{Text: "Error: at least one keyword is required"}},
@@ -291,11 +431,10 @@ func handleSearchFiles(ctx context.Context, req *mcp.CallToolRequest, args Searc
 		}, nil, nil
 	}
 
+	sc := GetSessionConfig()
+
 	// Default limit to prevent token overflow
-	limit := args.Limit
-	if limit == 0 {
-		limit = 20
-	}
+	limit := sc.GetSearchLimit(args.Limit)
 
 	// Default search mode to "and"
 	searchMode := args.SearchMode
@@ -303,7 +442,41 @@ func handleSearchFiles(ctx context.Context, req *mcp.CallToolRequest, args Searc
 		searchMode = "and"
 	}
 
-	results, err := SearchFiles(args.Repository, args.Keywords, searchMode, args.IncludeFilename, args.ContextLines, args.IncludePatterns, args.ExcludePatterns, limit)
+	includePatterns := sc.GetIncludePatterns(args.IncludePatterns)
+	excludePatterns := sc.GetExcludePatterns(args.ExcludePatterns)
+
+	// Multi-repository search if repositories array is provided
+	if len(args.Repositories) > 0 {
+		var allResults []RepoSearchResult
+
+		for _, repoName := range args.Repositories {
+			repoResult := RepoSearchResult{Repository: repoName}
+			results, err := SearchFiles(repoName, args.Keywords, searchMode, args.IncludeFilename, args.ContextLines, includePatterns, excludePatterns, limit)
+			if err != nil {
+				repoResult.Error = err.Error()
+			} else {
+				repoResult.Results = results
+				repoResult.TotalCount = len(results)
+			}
+			allResults = append(allResults, repoResult)
+		}
+
+		resultText := formatMultiRepoSearchResults(allResults, args.Keywords, searchMode)
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: resultText}},
+		}, nil, nil
+	}
+
+	// Single repository search
+	repository := sc.GetRepository(args.Repository)
+	if repository == "" {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "Error: repository required (no default set)"}},
+			IsError: true,
+		}, nil, nil
+	}
+
+	results, err := SearchFiles(repository, args.Keywords, searchMode, args.IncludeFilename, args.ContextLines, includePatterns, excludePatterns, limit)
 	if err != nil {
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Search failed: %v", err)}},
@@ -376,11 +549,22 @@ func handleGetFileContent(ctx context.Context, req *mcp.CallToolRequest, args Ge
 	if startLine < 1 {
 		startLine = 1
 	}
-	maxLines := args.MaxLines
-	if maxLines == 0 {
-		maxLines = 100
+
+	// Calculate maxLines: end_line > max_lines > session default > 100
+	var maxLines int
+	if args.EndLine > 0 {
+		if args.EndLine < startLine {
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Error: end_line (%d) must be >= start_line (%d)", args.EndLine, startLine)}},
+				IsError: true,
+			}, nil, nil
+		}
+		maxLines = args.EndLine - startLine + 1
+	} else {
+		// Use session config default (falls back to 100 if not set)
+		maxLines = GetSessionConfig().GetMaxLines(args.MaxLines)
 	}
-	// Default to showing line numbers (AI-friendly)
+
 	showLineNumbers := true
 
 	if len(filePaths) == 1 {
@@ -422,11 +606,15 @@ func handleCloneRepository(ctx context.Context, req *mcp.CallToolRequest, args C
 		}, nil, nil
 	}
 
+	var result strings.Builder
+	var repoName string
+	var cloneSuccess bool
+
 	output, actualName, err := CloneRepository(args.URL, args.Name)
+	repoName = actualName
+
 	if err != nil {
-		// Check if the error is because the repository already exists
 		if strings.Contains(err.Error(), "already exists in workspace") {
-			// If it exists, pull the latest changes
 			pullOutput, pullErr := PullRepository(actualName)
 			if pullErr != nil {
 				errorMsg := fmt.Sprintf("Repository '%s' already exists but pull failed: %v\nOutput: %s", actualName, pullErr, pullOutput)
@@ -435,34 +623,63 @@ func handleCloneRepository(ctx context.Context, req *mcp.CallToolRequest, args C
 					IsError: true,
 				}, nil, nil
 			}
-			resultText := fmt.Sprintf("Repository '%s' already exists. Pulled latest changes:\n%s", actualName, pullOutput)
+			result.WriteString(fmt.Sprintf("Repository '%s' already exists. Pulled latest:\n%s\n", actualName, strings.TrimSpace(pullOutput)))
+			cloneSuccess = true
+		} else {
+			var errorMsg string
+			if args.Name == "" {
+				errorMsg = fmt.Sprintf("Clone failed for '%s' (from URL): %v\nOutput: %s", actualName, err, output)
+			} else {
+				errorMsg = fmt.Sprintf("Clone failed for '%s': %v\nOutput: %s", actualName, err, output)
+			}
 			return &mcp.CallToolResult{
-				Content: []mcp.Content{&mcp.TextContent{Text: resultText}},
+				Content: []mcp.Content{&mcp.TextContent{Text: errorMsg}},
+				IsError: true,
 			}, nil, nil
 		}
-
-		// Handle other clone errors
-		var errorMsg string
+	} else {
 		if args.Name == "" {
-			errorMsg = fmt.Sprintf("Clone failed for repository '%s' (extracted from URL): %v\nOutput: %s", actualName, err, output)
+			result.WriteString(fmt.Sprintf("Cloned as '%s' (from URL):\n%s\n", actualName, strings.TrimSpace(output)))
 		} else {
-			errorMsg = fmt.Sprintf("Clone failed for repository '%s': %v\nOutput: %s", actualName, err, output)
+			result.WriteString(fmt.Sprintf("Cloned '%s':\n%s\n", actualName, strings.TrimSpace(output)))
 		}
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: errorMsg}},
-			IsError: true,
-		}, nil, nil
+		cloneSuccess = true
 	}
 
-	var resultText string
-	if args.Name == "" {
-		resultText = fmt.Sprintf("Successfully cloned repository as '%s' (extracted from URL):\n%s", actualName, output)
-	} else {
-		resultText = fmt.Sprintf("Successfully cloned repository '%s':\n%s", actualName, output)
+	// Include repository info if requested
+	if cloneSuccess && args.IncludeInfo {
+		result.WriteString("\n## Repository Info\n")
+		info, err := GetRepositoryInfo(repoName)
+		if err != nil {
+			result.WriteString(fmt.Sprintf("Error: %v\n", err))
+		} else {
+			result.WriteString(fmt.Sprintf("Branch: %s\n", info.CurrentBranch))
+			result.WriteString(fmt.Sprintf("Commits: %d\n", info.CommitCount))
+			if info.RemoteURL != "" {
+				result.WriteString(fmt.Sprintf("Remote: %s\n", info.RemoteURL))
+			}
+		}
+	}
+
+	// Include branches if requested
+	if cloneSuccess && args.IncludeBranches {
+		result.WriteString("\n## Branches\n")
+		branches, err := ListBranches(repoName)
+		if err != nil {
+			result.WriteString(fmt.Sprintf("Error: %v\n", err))
+		} else {
+			for _, branch := range branches {
+				if branch.IsCurrent {
+					result.WriteString(fmt.Sprintf("  * %s (current)\n", branch.Name))
+				} else {
+					result.WriteString(fmt.Sprintf("    %s\n", branch.Name))
+				}
+			}
+		}
 	}
 
 	return &mcp.CallToolResult{
-		Content: []mcp.Content{&mcp.TextContent{Text: resultText}},
+		Content: []mcp.Content{&mcp.TextContent{Text: result.String()}},
 	}, nil, nil
 }
 
@@ -483,6 +700,55 @@ func handleListWorkspaceRepositories(ctx context.Context, req *mcp.CallToolReque
 		}, nil, nil
 	}
 
+	// Extended mode: include status and/or commits
+	if args.IncludeStatus || args.IncludeCommits {
+		sc := GetSessionConfig()
+		commitLimit := args.CommitLimit
+		if commitLimit == 0 {
+			commitLimit = sc.GetCommitLimit(5)
+		}
+
+		var overviews []RepositoryOverview
+		for _, repoName := range repositories {
+			overview := RepositoryOverview{Name: repoName}
+
+			if args.IncludeStatus {
+				status, err := GetRepositoryStatus(repoName)
+				if err != nil {
+					overview.Error = err.Error()
+				} else {
+					overview.CurrentBranch = status.CurrentBranch
+					overview.HasChanges = status.HasChanges
+				}
+
+				branches, err := ListBranches(repoName)
+				if err == nil {
+					overview.BranchCount = len(branches)
+				}
+
+				info, err := GetRepositoryInfo(repoName)
+				if err == nil {
+					overview.RemoteURL = info.RemoteURL
+				}
+			}
+
+			if args.IncludeCommits {
+				commits, err := ListCommits(repoName, commitLimit)
+				if err == nil {
+					overview.RecentCommits = commits
+				}
+			}
+
+			overviews = append(overviews, overview)
+		}
+
+		resultText := formatWorkspaceOverview(wm.GetWorkspaceDir(), overviews, args.IncludeCommits)
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: resultText}},
+		}, nil, nil
+	}
+
+	// Simple mode: just list repository names
 	resultText := formatWorkspaceRepositories(repositories, wm.GetWorkspaceDir())
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{&mcp.TextContent{Text: resultText}},
@@ -542,39 +808,6 @@ func handleGetReadmeFiles(ctx context.Context, req *mcp.CallToolRequest, args Ge
 }
 
 // Formatting functions
-
-func formatRepositoryInfo(info *RepositoryInfo) string {
-	var result strings.Builder
-
-	result.WriteString(fmt.Sprintf("Repository Information for: %s\n", info.Path))
-	result.WriteString(strings.Repeat("=", 50) + "\n\n")
-
-	result.WriteString(fmt.Sprintf("Current Branch: %s\n", info.CurrentBranch))
-	result.WriteString(fmt.Sprintf("Total Commits: %d\n", info.CommitCount))
-
-	if !info.LastUpdate.IsZero() {
-		result.WriteString(fmt.Sprintf("Last Update: %s\n", info.LastUpdate.Format("2006-01-02 15:04:05")))
-	}
-
-	if info.RemoteURL != "" {
-		result.WriteString(fmt.Sprintf("Remote URL: %s\n", info.RemoteURL))
-	}
-
-	if info.License != "" {
-		result.WriteString(fmt.Sprintf("License File: %s\n", info.License))
-	}
-
-	if info.ReadmeContent != "" {
-		result.WriteString("\nREADME Content:\n")
-		result.WriteString(strings.Repeat("-", 30) + "\n")
-		result.WriteString(info.ReadmeContent)
-		if !strings.HasSuffix(info.ReadmeContent, "\n") {
-			result.WriteString("\n")
-		}
-	}
-
-	return result.String()
-}
 
 func handleListCommits(ctx context.Context, req *mcp.CallToolRequest, args ListCommitsParams) (*mcp.CallToolResult, any, error) {
 	if args.Repository == "" {
@@ -870,4 +1103,356 @@ func formatReadmeFiles(readmeFiles []ReadmeFileInfo, recursive bool) string {
 	}
 
 	return result.String()
+}
+
+// Unified session handler
+
+func handleSession(ctx context.Context, req *mcp.CallToolRequest, args SessionParams) (*mcp.CallToolResult, any, error) {
+	switch args.Action {
+	case "set":
+		config := &SessionConfig{
+			DefaultRepository:      args.DefaultRepository,
+			DefaultIncludePatterns: args.DefaultIncludePatterns,
+			DefaultExcludePatterns: args.DefaultExcludePatterns,
+			DefaultSearchLimit:     args.DefaultSearchLimit,
+			DefaultListFilesLimit:  args.DefaultListFilesLimit,
+			DefaultMaxLines:        args.DefaultMaxLines,
+			DefaultCommitLimit:     args.DefaultCommitLimit,
+		}
+		SetSessionConfigValues(config)
+
+		var result strings.Builder
+		result.WriteString("Session configuration updated:\n")
+		result.WriteString(strings.Repeat("-", 30) + "\n")
+		if args.DefaultRepository != "" {
+			result.WriteString(fmt.Sprintf("default_repository: %s\n", args.DefaultRepository))
+		}
+		if len(args.DefaultIncludePatterns) > 0 {
+			result.WriteString(fmt.Sprintf("default_include_patterns: %v\n", args.DefaultIncludePatterns))
+		}
+		if len(args.DefaultExcludePatterns) > 0 {
+			result.WriteString(fmt.Sprintf("default_exclude_patterns: %v\n", args.DefaultExcludePatterns))
+		}
+		if args.DefaultSearchLimit > 0 {
+			result.WriteString(fmt.Sprintf("default_search_limit: %d\n", args.DefaultSearchLimit))
+		}
+		if args.DefaultListFilesLimit > 0 {
+			result.WriteString(fmt.Sprintf("default_list_files_limit: %d\n", args.DefaultListFilesLimit))
+		}
+		if args.DefaultMaxLines > 0 {
+			result.WriteString(fmt.Sprintf("default_max_lines: %d\n", args.DefaultMaxLines))
+		}
+		if args.DefaultCommitLimit > 0 {
+			result.WriteString(fmt.Sprintf("default_commit_limit: %d\n", args.DefaultCommitLimit))
+		}
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: result.String()}},
+		}, nil, nil
+
+	case "get":
+		sc := GetSessionConfig()
+		if sc.IsEmpty() {
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{&mcp.TextContent{Text: "No session configuration set. Using defaults."}},
+			}, nil, nil
+		}
+		var result strings.Builder
+		result.WriteString("Current Session Configuration:\n")
+		result.WriteString(strings.Repeat("=", 50) + "\n\n")
+		configMap := sc.ToMap()
+		for key, value := range configMap {
+			result.WriteString(fmt.Sprintf("%s: %v\n", key, value))
+		}
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: result.String()}},
+		}, nil, nil
+
+	case "clear":
+		ClearSessionConfig()
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "Session configuration cleared. All values reset to defaults."}},
+		}, nil, nil
+
+	default:
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "Error: action must be 'set', 'get', or 'clear'"}},
+			IsError: true,
+		}, nil, nil
+	}
+}
+
+// Unified batch handler
+
+func handleBatch(ctx context.Context, req *mcp.CallToolRequest, args BatchParams) (*mcp.CallToolResult, any, error) {
+	wm := GetWorkspaceManager()
+	if wm == nil {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "Error: workspace not initialized"}},
+			IsError: true,
+		}, nil, nil
+	}
+
+	switch args.Operation {
+	case "clone":
+		if len(args.URLs) == 0 {
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{&mcp.TextContent{Text: "Error: urls array is required for clone operation"}},
+				IsError: true,
+			}, nil, nil
+		}
+
+		var results []BatchResult
+		for _, url := range args.URLs {
+			result := BatchResult{URL: url}
+			output, actualName, err := CloneRepository(url, "")
+			result.Name = actualName
+
+			if err != nil {
+				if strings.Contains(err.Error(), "already exists in workspace") {
+					pullOutput, pullErr := PullRepository(actualName)
+					if pullErr != nil {
+						result.Success = false
+						result.Error = fmt.Sprintf("Already exists but pull failed: %v", pullErr)
+					} else {
+						result.Success = true
+						result.Message = fmt.Sprintf("Already exists, pulled: %s", strings.TrimSpace(pullOutput))
+					}
+				} else {
+					result.Success = false
+					result.Error = err.Error()
+				}
+			} else {
+				result.Success = true
+				result.Message = fmt.Sprintf("Cloned: %s", strings.TrimSpace(output))
+			}
+			results = append(results, result)
+		}
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: formatBatchResults("clone", results)}},
+		}, nil, nil
+
+	case "pull":
+		repos := args.Repositories
+		if len(repos) == 0 {
+			var err error
+			repos, err = wm.ListRepositories()
+			if err != nil {
+				return &mcp.CallToolResult{
+					Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Failed to list repositories: %v", err)}},
+					IsError: true,
+				}, nil, nil
+			}
+		}
+
+		var results []BatchResult
+		for _, repoName := range repos {
+			result := BatchResult{Name: repoName}
+			output, err := PullRepository(repoName)
+			if err != nil {
+				result.Success = false
+				result.Error = err.Error()
+			} else {
+				result.Success = true
+				result.Message = strings.TrimSpace(output)
+			}
+			results = append(results, result)
+		}
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: formatBatchResults("pull", results)}},
+		}, nil, nil
+
+	case "status":
+		repos := args.Repositories
+		if len(repos) == 0 {
+			var err error
+			repos, err = wm.ListRepositories()
+			if err != nil {
+				return &mcp.CallToolResult{
+					Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Failed to list repositories: %v", err)}},
+					IsError: true,
+				}, nil, nil
+			}
+		}
+
+		var results []BatchResult
+		for _, repoName := range repos {
+			result := BatchResult{Name: repoName}
+			status, err := GetRepositoryStatus(repoName)
+			if err != nil {
+				result.Error = err.Error()
+			} else {
+				result.Success = true
+				result.Branch = status.CurrentBranch
+				result.HasChanges = status.HasChanges
+			}
+			results = append(results, result)
+		}
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: formatBatchResults("status", results)}},
+		}, nil, nil
+
+	default:
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "Error: operation must be 'clone', 'pull', or 'status'"}},
+			IsError: true,
+		}, nil, nil
+	}
+}
+
+// Formatting functions for batch operations
+
+func formatBatchResults(operation string, results []BatchResult) string {
+	var sb strings.Builder
+
+	successCount := 0
+	for _, r := range results {
+		if r.Success {
+			successCount++
+		}
+	}
+
+	sb.WriteString(fmt.Sprintf("Batch %s (%d/%d successful):\n", operation, successCount, len(results)))
+	sb.WriteString(strings.Repeat("-", 40) + "\n")
+
+	for _, r := range results {
+		name := r.Name
+		if r.URL != "" && name == "" {
+			name = r.URL
+		}
+
+		switch operation {
+		case "clone":
+			if r.Success {
+				sb.WriteString(fmt.Sprintf("✓ %s → %s\n", r.URL, r.Name))
+				if r.Message != "" {
+					sb.WriteString(fmt.Sprintf("  %s\n", r.Message))
+				}
+			} else {
+				sb.WriteString(fmt.Sprintf("✗ %s: %s\n", r.URL, r.Error))
+			}
+		case "pull":
+			if r.Success {
+				sb.WriteString(fmt.Sprintf("✓ %s: %s\n", name, r.Message))
+			} else {
+				sb.WriteString(fmt.Sprintf("✗ %s: %s\n", name, r.Error))
+			}
+		case "status":
+			if r.Error != "" {
+				sb.WriteString(fmt.Sprintf("✗ %s: %s\n", name, r.Error))
+			} else {
+				changeStatus := "clean"
+				if r.HasChanges {
+					changeStatus = "changes"
+				}
+				sb.WriteString(fmt.Sprintf("📁 %s [%s] (%s)\n", name, r.Branch, changeStatus))
+			}
+		}
+	}
+
+	return sb.String()
+}
+
+func formatWorkspaceOverview(workspaceDir string, overviews []RepositoryOverview, includeCommits bool) string {
+	var result strings.Builder
+
+	result.WriteString(fmt.Sprintf("Workspace Overview (%s)\n", workspaceDir))
+	result.WriteString(strings.Repeat("=", 50) + "\n")
+	result.WriteString(fmt.Sprintf("Total repositories: %d\n\n", len(overviews)))
+
+	if len(overviews) == 0 {
+		result.WriteString("No repositories found in workspace.\n")
+		return result.String()
+	}
+
+	for _, o := range overviews {
+		if o.Error != "" {
+			result.WriteString(fmt.Sprintf("📁 %s: Error - %s\n\n", o.Name, o.Error))
+			continue
+		}
+
+		changeStatus := "✓"
+		if o.HasChanges {
+			changeStatus = "●"
+		}
+
+		result.WriteString(fmt.Sprintf("📁 %s %s\n", o.Name, changeStatus))
+		result.WriteString(fmt.Sprintf("   Branch: %s", o.CurrentBranch))
+		if o.BranchCount > 0 {
+			result.WriteString(fmt.Sprintf(" (%d total)", o.BranchCount))
+		}
+		result.WriteString("\n")
+
+		if o.RemoteURL != "" {
+			result.WriteString(fmt.Sprintf("   Remote: %s\n", o.RemoteURL))
+		}
+
+		if includeCommits && len(o.RecentCommits) > 0 {
+			result.WriteString("   Recent commits:\n")
+			for _, c := range o.RecentCommits {
+				shortHash := c.Hash
+				if len(shortHash) > 7 {
+					shortHash = shortHash[:7]
+				}
+				msg := c.Message
+				if len(msg) > 50 {
+					msg = msg[:47] + "..."
+				}
+				result.WriteString(fmt.Sprintf("     %s %s\n", shortHash, msg))
+			}
+		}
+		result.WriteString("\n")
+	}
+
+	return result.String()
+}
+
+func formatMultiRepoSearchResults(results []RepoSearchResult, keywords []string, searchMode string) string {
+	var sb strings.Builder
+
+	totalMatches := 0
+	reposWithMatches := 0
+	for _, r := range results {
+		if r.TotalCount > 0 {
+			totalMatches += r.TotalCount
+			reposWithMatches++
+		}
+	}
+
+	var keywordStr string
+	if searchMode == "or" {
+		keywordStr = strings.Join(keywords, " OR ")
+	} else {
+		keywordStr = strings.Join(keywords, " AND ")
+	}
+
+	sb.WriteString(fmt.Sprintf("Multi-Repository Search: %s\n", keywordStr))
+	sb.WriteString(strings.Repeat("=", 50) + "\n")
+	sb.WriteString(fmt.Sprintf("Found %d matches in %d/%d repositories\n\n", totalMatches, reposWithMatches, len(results)))
+
+	for _, r := range results {
+		if r.Error != "" {
+			sb.WriteString(fmt.Sprintf("📁 %s: Error - %s\n\n", r.Repository, r.Error))
+			continue
+		}
+
+		if r.TotalCount == 0 {
+			continue
+		}
+
+		sb.WriteString(fmt.Sprintf("📁 %s (%d matches)\n", r.Repository, r.TotalCount))
+
+		for _, searchResult := range r.Results {
+			sb.WriteString(fmt.Sprintf("  📄 %s\n", searchResult.Path))
+			if len(searchResult.Matches) > 0 {
+				for _, match := range searchResult.Matches {
+					if match.LineNumber > 0 {
+						sb.WriteString(fmt.Sprintf("     L%d: %s\n", match.LineNumber, strings.TrimSpace(match.Content)))
+					}
+				}
+			}
+		}
+		sb.WriteString("\n")
+	}
+
+	return sb.String()
 }
