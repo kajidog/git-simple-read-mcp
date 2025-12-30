@@ -42,8 +42,14 @@ This MCP server provides the following tools for Git repository read operations:
   - File size information
 - **get_file_content**: Get the content of files
   - Single file or multiple files in one request
+  - Start reading from specified line (`start_line`)
+  - Line numbers always displayed for AI-friendly output
+  - File metadata included (path, line range, total lines)
   - Individual error handling for each file
-  - Line limits applied per file
+  - Minimal output format for reduced token usage
+- **get_readme_files**: Find all README files in repository
+  - Supports recursive search
+  - Returns file metadata (size, modification time, line count)
 
 ## Installation
 
@@ -291,6 +297,7 @@ Each tool accepts JSON parameters:
 {
   "repository": "my-repo",
   "file_path": "src/main.go",
+  "start_line": 1,
   "max_lines": 100
 }
 ```
@@ -300,6 +307,7 @@ Each tool accepts JSON parameters:
 {
   "repository": "my-repo",
   "file_paths": ["src/main.go", "src/utils.go", "config.json"],
+  "start_line": 50,
   "max_lines": 100
 }
 ```
@@ -307,12 +315,43 @@ Each tool accepts JSON parameters:
 **Parameters:**
 - `file_path`: Single file path (for backward compatibility)
 - `file_paths`: Array of file paths (for multiple files)
+- `start_line`: Line number to start reading from (1-based), default: 1
 - `max_lines`: Maximum lines per file, default: 100
 
+**Output format (AI-optimized):**
+```
+[src/main.go L1-50/200]
+   1: package main
+   2:
+   3: func main() {
+...
+```
+
+Format: `[path L{start}-{end}/{total}]` followed by line-numbered content.
+
 **Multiple file output:**
-- Individual success/error status per file
-- File path identification
-- Content or error message for each file
+```
+[src/main.go L1-50/200]
+   1: package main
+...
+
+[src/utils.go L1-30/30]
+   1: package main
+...
+
+[config.json ERR:file not found]
+```
+
+#### get_readme_files
+```json
+{
+  "repository": "my-repo",
+  "recursive": true
+}
+```
+
+**Parameters:**
+- `recursive`: Search subdirectories, default: false
 
 ## Enhanced Features Examples
 
@@ -360,33 +399,42 @@ The `list_files` tool now returns detailed file information:
 {
   "repository": "my-repo",
   "file_paths": ["main.go", "config.json", "README.md"],
+  "start_line": 1,
   "max_lines": 50
 }
 ```
 
-Returns content for all files with individual error handling:
+Returns content for all files with individual error handling (AI-optimized minimal format):
 ```
-Content of 3 files:
-==================================================
+[main.go L1-10/10]
+   1: package main
+   2:
+   3: func main() {}
 
-📄 main.go
+[config.json ERR:file not found]
+
+[README.md L1-5/5]
+   1: # My Project
+   2: This is a sample project
 ```
-package main
-func main() {}
+
+### Reading from Specific Line
+
+```json
+{
+  "repository": "my-repo",
+  "file_path": "large_file.go",
+  "start_line": 100,
+  "max_lines": 50
+}
 ```
 
-------------------------------------------
-
-📄 config.json  
-❌ Error: file not found
-
-------------------------------------------
-
-📄 README.md
+Output:
 ```
-# My Project
-This is a sample project
-```
+[large_file.go L100-149/500]
+ 100: func processData() {
+ 101:     // Processing logic
+...
 ```
 
 ## Error Handling

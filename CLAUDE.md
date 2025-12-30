@@ -61,7 +61,8 @@ This is a Go-based Model Context Protocol (MCP) server that provides Git read op
    - Multiple file content retrieval with individual error handling
    - Automatic repository name extraction from Git URLs
    - README file discovery with recursive search support
-   - Optional line numbers for file content display
+   - Line numbers for file content display (always enabled)
+   - Start line offset for reading from specific line
 
 4. **Application Layer** (`main.go`)
    - Cobra CLI framework with `mcp` subcommand
@@ -80,7 +81,10 @@ All Git operations are restricted to repositories within the configured workspac
 Tools use consistent parameter naming:
 - `repository` (not `path`) - more intuitive for Git operations
 - Optional parameters use `omitempty` JSON tags
-- Automatic defaults: `limit=20` (search), `limit=50` (list_files), `max_lines=100`
+- Automatic defaults:
+  - `limit=20` (search), `limit=50` (list_files)
+  - `max_lines=100`, `start_line=1` (get_file_content)
+  - `show_line_numbers=true` (always enabled for AI-friendly output)
 
 ### Enhanced File Operations
 
@@ -96,9 +100,12 @@ Tools use consistent parameter naming:
 
 **Multiple File Content:**
 - `get_file_content` supports single file (backward compatible) and multiple files
+- `start_line` parameter allows reading from specified line (1-based, default: 1)
+- Line numbers always displayed (AI-friendly default)
+- Returns metadata: total lines, actual start/end lines
+- AI-optimized minimal output format: `[path L{start}-{end}/{total}]`
 - Individual error handling per file in multi-file requests
 - Per-file line limits applied consistently
-- Optional line numbers display with `show_line_numbers` parameter
 
 **README File Discovery:**
 - `get_readme_files` tool finds all README files in repository

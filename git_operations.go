@@ -480,9 +480,12 @@ func extractRepoNameFromURL(repoURL string) (string, error) {
 
 // FileContentResult represents the content of a single file
 type FileContentResult struct {
-	FilePath string `json:"file_path"`
-	Content  string `json:"content"`
-	Error    string `json:"error,omitempty"`
+	FilePath   string `json:"file_path"`
+	Content    string `json:"content"`
+	Error      string `json:"error,omitempty"`
+	TotalLines int    `json:"total_lines,omitempty"`
+	StartLine  int    `json:"start_line,omitempty"`
+	EndLine    int    `json:"end_line,omitempty"`
 }
 
 // ReadmeFileInfo represents information about a README file
@@ -557,30 +560,65 @@ func GetMultipleFileContents(repoPath string, filePaths []string, maxLines int) 
 }
 
 // GetFileContentWithLineNumbers reads the content of a file with optional line numbers
-func GetFileContentWithLineNumbers(repoPath, filePath string, maxLines int, showLineNumbers bool) (string, error) {
+// Returns: content, totalLines, actualStartLine, actualEndLine, error
+func GetFileContentWithLineNumbers(repoPath, filePath string, startLine, maxLines int, showLineNumbers bool) (string, int, int, int, error) {
 	// Validate workspace path
 	validPath, err := ValidateWorkspacePath(repoPath)
 	if err != nil {
-		return "", err
+		return "", 0, 0, 0, err
 	}
 	repoPath = validPath
 
 	fullPath := filepath.Join(repoPath, filePath)
 
+	// First pass: count total lines
 	file, err := os.Open(fullPath)
 	if err != nil {
-		return "", fmt.Errorf("failed to open file: %v", err)
+		return "", 0, 0, 0, fmt.Errorf("failed to open file: %v", err)
+	}
+
+	totalLines := 0
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		totalLines++
+	}
+	file.Close()
+
+	if err := scanner.Err(); err != nil {
+		return "", 0, 0, 0, fmt.Errorf("failed to count lines: %v", err)
+	}
+
+	// Normalize startLine
+	if startLine < 1 {
+		startLine = 1
+	}
+	if startLine > totalLines {
+		return "", totalLines, startLine, startLine, nil
+	}
+
+	// Second pass: read content from startLine
+	file, err = os.Open(fullPath)
+	if err != nil {
+		return "", 0, 0, 0, fmt.Errorf("failed to open file: %v", err)
 	}
 	defer file.Close()
 
 	var content strings.Builder
-	scanner := bufio.NewScanner(file)
-	lineCount := 0
+	scanner = bufio.NewScanner(file)
+	currentLine := 0
+	linesRead := 0
 
-	for scanner.Scan() && (maxLines == 0 || lineCount < maxLines) {
-		lineCount++
+	for scanner.Scan() {
+		currentLine++
+		if currentLine < startLine {
+			continue
+		}
+		if maxLines > 0 && linesRead >= maxLines {
+			break
+		}
+		linesRead++
 		if showLineNumbers {
-			content.WriteString(fmt.Sprintf("%4d: %s\n", lineCount, scanner.Text()))
+			content.WriteString(fmt.Sprintf("%4d: %s\n", currentLine, scanner.Text()))
 		} else {
 			content.WriteString(scanner.Text())
 			content.WriteString("\n")
@@ -588,14 +626,19 @@ func GetFileContentWithLineNumbers(repoPath, filePath string, maxLines int, show
 	}
 
 	if err := scanner.Err(); err != nil {
-		return "", fmt.Errorf("failed to read file: %v", err)
+		return "", 0, 0, 0, fmt.Errorf("failed to read file: %v", err)
 	}
 
-	return content.String(), nil
+	endLine := startLine + linesRead - 1
+	if linesRead == 0 {
+		endLine = startLine
+	}
+
+	return content.String(), totalLines, startLine, endLine, nil
 }
 
 // GetMultipleFileContentsWithLineNumbers reads the content of multiple files with optional line numbers
-func GetMultipleFileContentsWithLineNumbers(repoPath string, filePaths []string, maxLines int, showLineNumbers bool) ([]FileContentResult, error) {
+func GetMultipleFileContentsWithLineNumbers(repoPath string, filePaths []string, startLine, maxLines int, showLineNumbers bool) ([]FileContentResult, error) {
 	// Validate workspace path
 	validPath, err := ValidateWorkspacePath(repoPath)
 	if err != nil {
@@ -610,11 +653,14 @@ func GetMultipleFileContentsWithLineNumbers(repoPath string, filePaths []string,
 			FilePath: filePath,
 		}
 
-		content, err := GetFileContentWithLineNumbers(repoPath, filePath, maxLines, showLineNumbers)
+		content, totalLines, actualStart, actualEnd, err := GetFileContentWithLineNumbers(repoPath, filePath, startLine, maxLines, showLineNumbers)
 		if err != nil {
 			result.Error = err.Error()
 		} else {
 			result.Content = content
+			result.TotalLines = totalLines
+			result.StartLine = actualStart
+			result.EndLine = actualEnd
 		}
 
 		results = append(results, result)

@@ -106,9 +106,16 @@ func TestGetFileContentWithLineNumbers(t *testing.T) {
 	repo.AddCommit("Add test file for line numbers")
 
 	t.Run("Get content without line numbers", func(t *testing.T) {
-		content, err := GetFileContentWithLineNumbers(repo.Path, "test.txt", 0, false)
+		content, totalLines, startLine, endLine, err := GetFileContentWithLineNumbers(repo.Path, "test.txt", 1, 0, false)
 		if err != nil {
 			t.Fatalf("GetFileContentWithLineNumbers failed: %v", err)
+		}
+
+		if totalLines != 5 {
+			t.Errorf("Expected totalLines=5, got %d", totalLines)
+		}
+		if startLine != 1 || endLine != 5 {
+			t.Errorf("Expected startLine=1, endLine=5, got %d-%d", startLine, endLine)
 		}
 
 		lines := strings.Split(strings.TrimSuffix(content, "\n"), "\n")
@@ -126,7 +133,7 @@ func TestGetFileContentWithLineNumbers(t *testing.T) {
 	})
 
 	t.Run("Get content with line numbers", func(t *testing.T) {
-		content, err := GetFileContentWithLineNumbers(repo.Path, "test.txt", 0, true)
+		content, _, _, _, err := GetFileContentWithLineNumbers(repo.Path, "test.txt", 1, 0, true)
 		if err != nil {
 			t.Fatalf("GetFileContentWithLineNumbers failed: %v", err)
 		}
@@ -150,9 +157,16 @@ func TestGetFileContentWithLineNumbers(t *testing.T) {
 	})
 
 	t.Run("Get content with line numbers and limit", func(t *testing.T) {
-		content, err := GetFileContentWithLineNumbers(repo.Path, "test.txt", 3, true)
+		content, totalLines, startLine, endLine, err := GetFileContentWithLineNumbers(repo.Path, "test.txt", 1, 3, true)
 		if err != nil {
 			t.Fatalf("GetFileContentWithLineNumbers failed: %v", err)
+		}
+
+		if totalLines != 5 {
+			t.Errorf("Expected totalLines=5, got %d", totalLines)
+		}
+		if startLine != 1 || endLine != 3 {
+			t.Errorf("Expected startLine=1, endLine=3, got %d-%d", startLine, endLine)
 		}
 
 		lines := strings.Split(strings.TrimSuffix(content, "\n"), "\n")
@@ -166,6 +180,30 @@ func TestGetFileContentWithLineNumbers(t *testing.T) {
 			if !strings.HasPrefix(line, expectedPrefix) {
 				t.Errorf("Line %d: expected prefix %q, got %q", i+1, expectedPrefix, line[:5])
 			}
+		}
+	})
+
+	t.Run("Get content with startLine offset", func(t *testing.T) {
+		content, totalLines, startLine, endLine, err := GetFileContentWithLineNumbers(repo.Path, "test.txt", 3, 0, true)
+		if err != nil {
+			t.Fatalf("GetFileContentWithLineNumbers failed: %v", err)
+		}
+
+		if totalLines != 5 {
+			t.Errorf("Expected totalLines=5, got %d", totalLines)
+		}
+		if startLine != 3 || endLine != 5 {
+			t.Errorf("Expected startLine=3, endLine=5, got %d-%d", startLine, endLine)
+		}
+
+		lines := strings.Split(strings.TrimSuffix(content, "\n"), "\n")
+		if len(lines) != 3 {
+			t.Errorf("Expected 3 lines (from line 3 to 5), got %d", len(lines))
+		}
+
+		// Check that line numbers start from 3
+		if !strings.HasPrefix(lines[0], "   3: ") {
+			t.Errorf("First line should start with '   3: ', got %q", lines[0][:6])
 		}
 	})
 }
@@ -188,7 +226,7 @@ func TestGetMultipleFileContentsWithLineNumbers(t *testing.T) {
 
 	t.Run("Get multiple files with line numbers", func(t *testing.T) {
 		filePaths := []string{"file1.txt", "file2.txt", "file3.txt"}
-		results, err := GetMultipleFileContentsWithLineNumbers(repo.Path, filePaths, 0, true)
+		results, err := GetMultipleFileContentsWithLineNumbers(repo.Path, filePaths, 1, 0, true)
 		if err != nil {
 			t.Fatalf("GetMultipleFileContentsWithLineNumbers failed: %v", err)
 		}
@@ -205,6 +243,9 @@ func TestGetMultipleFileContentsWithLineNumbers(t *testing.T) {
 		if !strings.HasPrefix(lines1[0], "   1: ") {
 			t.Errorf("File1 line 1: expected line number prefix")
 		}
+		if results[0].TotalLines != 2 {
+			t.Errorf("File1: expected TotalLines=2, got %d", results[0].TotalLines)
+		}
 
 		// Check file2.txt (1 line)
 		lines2 := strings.Split(strings.TrimSuffix(results[1].Content, "\n"), "\n")
@@ -213,6 +254,9 @@ func TestGetMultipleFileContentsWithLineNumbers(t *testing.T) {
 		}
 		if !strings.HasPrefix(lines2[0], "   1: ") {
 			t.Errorf("File2 line 1: expected line number prefix")
+		}
+		if results[1].TotalLines != 1 {
+			t.Errorf("File2: expected TotalLines=1, got %d", results[1].TotalLines)
 		}
 
 		// Check file3.txt (3 lines)
@@ -223,11 +267,14 @@ func TestGetMultipleFileContentsWithLineNumbers(t *testing.T) {
 		if !strings.HasPrefix(lines3[2], "   3: ") {
 			t.Errorf("File3 line 3: expected line number prefix")
 		}
+		if results[2].TotalLines != 3 {
+			t.Errorf("File3: expected TotalLines=3, got %d", results[2].TotalLines)
+		}
 	})
 
 	t.Run("Get multiple files without line numbers", func(t *testing.T) {
 		filePaths := []string{"file1.txt", "file2.txt"}
-		results, err := GetMultipleFileContentsWithLineNumbers(repo.Path, filePaths, 0, false)
+		results, err := GetMultipleFileContentsWithLineNumbers(repo.Path, filePaths, 1, 0, false)
 		if err != nil {
 			t.Fatalf("GetMultipleFileContentsWithLineNumbers failed: %v", err)
 		}

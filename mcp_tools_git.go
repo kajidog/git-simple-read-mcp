@@ -54,11 +54,12 @@ type ListFilesParams struct {
 
 // GetFileContentParams parameters for get_file_content tool
 type GetFileContentParams struct {
-	Repository  string   `json:"repository"`
-	FilePath    string   `json:"file_path,omitempty"`    // Single file path (for backward compatibility)
-	FilePaths   []string `json:"file_paths,omitempty"`   // Multiple file paths
-	MaxLines    int      `json:"max_lines,omitempty"`    // Max lines per file
-	ShowLineNumbers bool `json:"show_line_numbers,omitempty"` // Show line numbers in output
+	Repository      string   `json:"repository"`
+	FilePath        string   `json:"file_path,omitempty"`        // Single file path (for backward compatibility)
+	FilePaths       []string `json:"file_paths,omitempty"`       // Multiple file paths
+	StartLine       int      `json:"start_line,omitempty"`       // Start reading from this line (1-based, default: 1)
+	MaxLines        int      `json:"max_lines,omitempty"`        // Max lines per file
+	ShowLineNumbers bool     `json:"show_line_numbers,omitempty"` // Show line numbers (default: true)
 }
 
 // CloneRepositoryParams parameters for clone_repository tool
@@ -370,32 +371,38 @@ func handleGetFileContent(ctx context.Context, req *mcp.CallToolRequest, args Ge
 		}, nil, nil
 	}
 
-	// Default limit to prevent token overflow
+	// Default values
+	startLine := args.StartLine
+	if startLine < 1 {
+		startLine = 1
+	}
 	maxLines := args.MaxLines
 	if maxLines == 0 {
 		maxLines = 100
 	}
+	// Default to showing line numbers (AI-friendly)
+	showLineNumbers := true
 
 	if len(filePaths) == 1 {
-		// Single file - maintain backward compatibility
-		content, err := GetFileContentWithLineNumbers(args.Repository, filePaths[0], maxLines, args.ShowLineNumbers)
+		// Single file
+		content, totalLines, actualStart, actualEnd, err := GetFileContentWithLineNumbers(args.Repository, filePaths[0], startLine, maxLines, showLineNumbers)
 		if err != nil {
 			return &mcp.CallToolResult{
-				Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Failed to get file content: %v", err)}},
+				Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("[%s ERR:%v]", filePaths[0], err)}},
 				IsError: true,
 			}, nil, nil
 		}
 
-		resultText := fmt.Sprintf("Content of %s:\n```\n%s```", filePaths[0], content)
+		resultText := fmt.Sprintf("[%s L%d-%d/%d]\n%s", filePaths[0], actualStart, actualEnd, totalLines, content)
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{&mcp.TextContent{Text: resultText}},
 		}, nil, nil
 	} else {
 		// Multiple files
-		results, err := GetMultipleFileContentsWithLineNumbers(args.Repository, filePaths, maxLines, args.ShowLineNumbers)
+		results, err := GetMultipleFileContentsWithLineNumbers(args.Repository, filePaths, startLine, maxLines, showLineNumbers)
 		if err != nil {
 			return &mcp.CallToolResult{
-				Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Failed to get file contents: %v", err)}},
+				Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("ERR:%v", err)}},
 				IsError: true,
 			}, nil, nil
 		}
@@ -806,25 +813,16 @@ func formatWorkspaceRepositories(repositories []string, workspaceDir string) str
 func formatMultipleFileContents(results []FileContentResult) string {
 	var result strings.Builder
 
-	result.WriteString(fmt.Sprintf("Content of %d files:\n", len(results)))
-	result.WriteString(strings.Repeat("=", 50) + "\n\n")
-
 	for i, fileResult := range results {
 		if i > 0 {
-			result.WriteString("\n" + strings.Repeat("-", 40) + "\n\n")
+			result.WriteString("\n")
 		}
 
-		result.WriteString(fmt.Sprintf("📄 %s\n", fileResult.FilePath))
-
 		if fileResult.Error != "" {
-			result.WriteString(fmt.Sprintf("❌ Error: %s\n", fileResult.Error))
+			result.WriteString(fmt.Sprintf("[%s ERR:%s]\n", fileResult.FilePath, fileResult.Error))
 		} else {
-			result.WriteString("```\n")
+			result.WriteString(fmt.Sprintf("[%s L%d-%d/%d]\n", fileResult.FilePath, fileResult.StartLine, fileResult.EndLine, fileResult.TotalLines))
 			result.WriteString(fileResult.Content)
-			if !strings.HasSuffix(fileResult.Content, "\n") {
-				result.WriteString("\n")
-			}
-			result.WriteString("```\n")
 		}
 	}
 
