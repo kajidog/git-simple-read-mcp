@@ -102,10 +102,10 @@ func (ms *MemoStore) saveUnlocked() error {
 	return nil
 }
 
-// save writes memos to the JSON file (acquires lock)
+// save writes memos to the JSON file (acquires exclusive lock)
 func (ms *MemoStore) save() error {
-	ms.mu.RLock()
-	defer ms.mu.RUnlock()
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
 	return ms.saveUnlocked()
 }
 
