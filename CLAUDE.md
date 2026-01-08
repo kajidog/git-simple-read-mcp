@@ -43,10 +43,10 @@ This is a Go-based Model Context Protocol (MCP) server that provides Git read op
 
 ### Core Architecture Layers
 
-1. **MCP Layer** (`mcp_server.go`, `mcp_tools_git.go`)
+1. **MCP Layer** (`mcp_server.go`, `mcp_tools_git.go`, `mcp_tools_memo.go`)
    - MCP server initialization with both stdio and HTTP transport support
    - Tool parameter definitions and handler registration
-   - 22 registered tools: repository info, cloning, branch listing, enhanced file operations, pattern-based search, README discovery, session configuration, batch operations, composite tools, cross-repository search
+   - 28 registered tools: repository info, cloning, branch listing, enhanced file operations, pattern-based search, README discovery, session configuration, batch operations, composite tools, cross-repository search, memo management (add/get/update/delete/list/delete-all)
 
 2. **Workspace Security Layer** (`workspace.go`)
    - `WorkspaceManager` enforces all operations within a specified workspace directory
@@ -64,10 +64,19 @@ This is a Go-based Model Context Protocol (MCP) server that provides Git read op
    - Line numbers for file content display (always enabled)
    - Start line offset for reading from specific line
 
-4. **Application Layer** (`main.go`)
+4. **Memo Management Layer** (`memo.go`)
+   - Persistent document memo storage and retrieval
+   - JSON-based file storage in workspace directory (`memos.json`)
+   - Thread-safe operations with mutex synchronization
+   - CRUD operations: Create, Read, Update, Delete
+   - Search and filtering by title, content, and tags
+   - Cross-session persistence
+
+5. **Application Layer** (`main.go`)
    - Cobra CLI framework with `mcp` subcommand
    - Transport selection (stdio/HTTP) with configurable host/port
    - Workspace directory initialization
+   - Memo store initialization
 
 ### Key Security Model
 
@@ -145,12 +154,43 @@ Combine frequently-used operations into single calls:
 - Supports all search parameters (keywords, patterns, context lines)
 - Returns results grouped by repository
 
+### Memo Management
+
+Document memo system for persistent note-taking across sessions:
+
+**Data Structure:**
+- ID: Unique identifier (UUID)
+- Title: Memo title (required)
+- Content: Memo body text
+- Tags: Optional tags for categorization
+- CreatedAt / UpdatedAt: Timestamps
+
+**Available Tools:**
+- `add_memo`: Create a new memo with title, content, and optional tags
+- `get_memo`: Retrieve a specific memo by ID
+- `update_memo`: Update title, content, or tags of an existing memo
+- `delete_memo`: Delete a memo by ID
+- `list_memos`: Search/list memos with optional query and tag filters
+- `delete_all_memos`: Delete all memos (use with caution)
+
+**Storage:**
+- Memos are stored in `<workspace>/memos.json`
+- Persistent across sessions
+- Thread-safe with mutex synchronization
+- Automatic save on every modification
+
+**Search Capabilities:**
+- Search by keywords in title/content (case-insensitive)
+- Filter by tags
+- Result limiting with configurable max results
+
 ### Test Structure
 
 Tests are organized into categories matching the Makefile targets:
 - `*_test.go` - Core functionality tests
 - `enhanced_features_test.go` - Tests for new pattern filtering, character count, and multi-file features
 - `readme_line_numbers_test.go` - Tests for README discovery and line numbers functionality
+- `memo_test.go` - Tests for memo management functionality (CRUD, persistence, concurrency)
 - `test_helpers.go` - Shared test utilities with `TestRepository` struct
 - `performance_test.go` - Resource usage and concurrency tests
 - `edge_cases_test.go` - Error conditions and boundary cases
@@ -177,6 +217,7 @@ The `extractRepoNameFromURL()` function handles various Git URL formats:
 ## Development Notes
 
 - All workspace operations require `InitializeWorkspace()` before use
+- Memo management requires `InitializeMemoStore()` after workspace initialization
 - Git operations return `(output, repoName, error)` pattern for consistent error handling
 - MCP handlers return `*mcp.CallToolResultFor[any]` with `IsError` flag
 - Parameter validation happens at the MCP handler level before calling Git operations
