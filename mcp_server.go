@@ -35,6 +35,11 @@ Supports both stdio (default) and HTTP transports for maximum compatibility.`,
 			return fmt.Errorf("failed to initialize workspace: %v", err)
 		}
 
+		// Initialize memo store
+		if err := InitializeMemoStore(workspace); err != nil {
+			return fmt.Errorf("failed to initialize memo store: %v", err)
+		}
+
 		// Create MCP server
 		server := CreateMCPServer()
 
@@ -88,6 +93,9 @@ func CreateMCPServer() *mcp.Server {
 
 	// Register all Git tools
 	RegisterGitTools(server)
+
+	// Register all Memo tools
+	RegisterMemoTools(server)
 
 	return server
 }
