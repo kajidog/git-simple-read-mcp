@@ -10,9 +10,10 @@ import (
 
 // AddMemoParams parameters for add_memo tool
 type AddMemoParams struct {
-	Title   string   `json:"title"`
-	Content string   `json:"content"`
-	Tags    []string `json:"tags,omitempty"`
+	Repository string   `json:"repository,omitempty"` // Associated repository name
+	Title      string   `json:"title"`
+	Content    string   `json:"content"`
+	Tags       []string `json:"tags,omitempty"`
 }
 
 // GetMemoParams parameters for get_memo tool
@@ -22,10 +23,11 @@ type GetMemoParams struct {
 
 // UpdateMemoParams parameters for update_memo tool
 type UpdateMemoParams struct {
-	ID      string   `json:"id"`
-	Title   string   `json:"title,omitempty"`
-	Content string   `json:"content,omitempty"`
-	Tags    []string `json:"tags,omitempty"`
+	ID         string   `json:"id"`
+	Repository string   `json:"repository,omitempty"` // Change associated repository
+	Title      string   `json:"title,omitempty"`
+	Content    string   `json:"content,omitempty"`
+	Tags       []string `json:"tags,omitempty"`
 }
 
 // DeleteMemoParams parameters for delete_memo tool
@@ -35,9 +37,10 @@ type DeleteMemoParams struct {
 
 // ListMemosParams parameters for list_memos tool
 type ListMemosParams struct {
-	Query string   `json:"query,omitempty"` // Search query for title/content
-	Tags  []string `json:"tags,omitempty"`  // Filter by tags
-	Limit int      `json:"limit,omitempty"` // Maximum number of results (default: 50)
+	Repository string   `json:"repository,omitempty"` // Filter by repository name
+	Query      string   `json:"query,omitempty"`      // Search query for title/content
+	Tags       []string `json:"tags,omitempty"`       // Filter by tags
+	Limit      int      `json:"limit,omitempty"`      // Maximum number of results (default: 50)
 }
 
 // RegisterMemoTools registers all memo-related MCP tools
@@ -45,7 +48,7 @@ func RegisterMemoTools(server *mcp.Server) {
 	// Add memo tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "add_memo",
-		Description: "Add a new document memo with title, content, and optional tags",
+		Description: "Add a new document memo. Options: repository (associate with repo), title (required), content, tags",
 	}, handleAddMemo)
 
 	// Get memo tool
@@ -57,7 +60,7 @@ func RegisterMemoTools(server *mcp.Server) {
 	// Update memo tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "update_memo",
-		Description: "Update an existing memo's title, content, or tags",
+		Description: "Update an existing memo. Options: id (required), repository, title, content, tags",
 	}, handleUpdateMemo)
 
 	// Delete memo tool
@@ -69,7 +72,7 @@ func RegisterMemoTools(server *mcp.Server) {
 	// List/search memos tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_memos",
-		Description: "List or search memos. Optional: query (search in title/content), tags (filter by tags), limit (max results)",
+		Description: "List or search memos. Options: repository (filter by repo), query (search in title/content), tags (filter by tags), limit (max results)",
 	}, handleListMemos)
 
 	// Delete all memos tool
@@ -88,7 +91,7 @@ func handleAddMemo(ctx context.Context, req *mcp.CallToolRequest, args AddMemoPa
 		}, nil, nil
 	}
 
-	memo, err := store.AddMemo(args.Title, args.Content, args.Tags)
+	memo, err := store.AddMemo(args.Repository, args.Title, args.Content, args.Tags)
 	if err != nil {
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Failed to add memo: %v", err)}},
@@ -97,8 +100,11 @@ func handleAddMemo(ctx context.Context, req *mcp.CallToolRequest, args AddMemoPa
 	}
 
 	var result strings.Builder
-	result.WriteString(fmt.Sprintf("Memo added successfully\n\n"))
+	result.WriteString("Memo added successfully\n\n")
 	result.WriteString(fmt.Sprintf("ID: %s\n", memo.ID))
+	if memo.Repository != "" {
+		result.WriteString(fmt.Sprintf("Repository: %s\n", memo.Repository))
+	}
 	result.WriteString(fmt.Sprintf("Title: %s\n", memo.Title))
 	result.WriteString(fmt.Sprintf("Created: %s\n", memo.CreatedAt.Format("2006-01-02 15:04:05")))
 	if len(memo.Tags) > 0 {
@@ -131,6 +137,9 @@ func handleGetMemo(ctx context.Context, req *mcp.CallToolRequest, args GetMemoPa
 
 	var result strings.Builder
 	result.WriteString(fmt.Sprintf("ID: %s\n", memo.ID))
+	if memo.Repository != "" {
+		result.WriteString(fmt.Sprintf("Repository: %s\n", memo.Repository))
+	}
 	result.WriteString(fmt.Sprintf("Title: %s\n", memo.Title))
 	result.WriteString(strings.Repeat("=", 50) + "\n\n")
 	if len(memo.Tags) > 0 {
@@ -155,7 +164,7 @@ func handleUpdateMemo(ctx context.Context, req *mcp.CallToolRequest, args Update
 		}, nil, nil
 	}
 
-	memo, err := store.UpdateMemo(args.ID, args.Title, args.Content, args.Tags)
+	memo, err := store.UpdateMemo(args.ID, args.Repository, args.Title, args.Content, args.Tags)
 	if err != nil {
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Failed to update memo: %v", err)}},
@@ -164,8 +173,11 @@ func handleUpdateMemo(ctx context.Context, req *mcp.CallToolRequest, args Update
 	}
 
 	var result strings.Builder
-	result.WriteString(fmt.Sprintf("Memo updated successfully\n\n"))
+	result.WriteString("Memo updated successfully\n\n")
 	result.WriteString(fmt.Sprintf("ID: %s\n", memo.ID))
+	if memo.Repository != "" {
+		result.WriteString(fmt.Sprintf("Repository: %s\n", memo.Repository))
+	}
 	result.WriteString(fmt.Sprintf("Title: %s\n", memo.Title))
 	result.WriteString(fmt.Sprintf("Updated: %s\n", memo.UpdatedAt.Format("2006-01-02 15:04:05")))
 	if len(memo.Tags) > 0 {
@@ -215,14 +227,23 @@ func handleListMemos(ctx context.Context, req *mcp.CallToolRequest, args ListMem
 		limit = 50 // Default limit
 	}
 
-	memos := store.SearchMemos(args.Query, args.Tags, limit)
+	memos := store.SearchMemos(args.Query, args.Repository, args.Tags, limit)
 
 	var result strings.Builder
-	result.WriteString(fmt.Sprintf("Found %d memo(s)\n", len(memos)))
+	result.WriteString(fmt.Sprintf("Found %d memo(s)", len(memos)))
+	if args.Repository != "" {
+		result.WriteString(fmt.Sprintf(" for repository: %s", args.Repository))
+	}
+	result.WriteString("\n")
 	result.WriteString(strings.Repeat("=", 50) + "\n\n")
 
 	for i, memo := range memos {
-		result.WriteString(fmt.Sprintf("%d. [%s] %s\n", i+1, memo.ID[:8], memo.Title))
+		// Show full ID for AI usability (was truncated to 8 chars before)
+		result.WriteString(fmt.Sprintf("%d. %s\n", i+1, memo.Title))
+		result.WriteString(fmt.Sprintf("   ID: %s\n", memo.ID))
+		if memo.Repository != "" {
+			result.WriteString(fmt.Sprintf("   Repository: %s\n", memo.Repository))
+		}
 		if len(memo.Tags) > 0 {
 			result.WriteString(fmt.Sprintf("   Tags: %s\n", strings.Join(memo.Tags, ", ")))
 		}
@@ -241,7 +262,7 @@ func handleListMemos(ctx context.Context, req *mcp.CallToolRequest, args ListMem
 
 	if len(memos) == 0 {
 		result.WriteString("No memos found")
-		if args.Query != "" || len(args.Tags) > 0 {
+		if args.Query != "" || len(args.Tags) > 0 || args.Repository != "" {
 			result.WriteString(" matching the search criteria")
 		}
 		result.WriteString(".\n")

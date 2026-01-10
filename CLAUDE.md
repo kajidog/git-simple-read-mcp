@@ -156,22 +156,28 @@ Combine frequently-used operations into single calls:
 
 ### Memo Management
 
-Document memo system for persistent note-taking across sessions:
+Document memo system for persistent note-taking across sessions with repository association:
 
 **Data Structure:**
-- ID: Unique identifier (UUID)
+- ID: Unique identifier (UUID) - full UUID displayed in all outputs for AI usability
+- Repository: Associated repository name (optional, for organizing memos by project)
 - Title: Memo title (required)
 - Content: Memo body text
 - Tags: Optional tags for categorization
 - CreatedAt / UpdatedAt: Timestamps
 
 **Available Tools:**
-- `add_memo`: Create a new memo with title, content, and optional tags
-- `get_memo`: Retrieve a specific memo by ID
-- `update_memo`: Update title, content, or tags of an existing memo
+- `add_memo`: Create a new memo. Parameters: repository (optional), title (required), content, tags
+- `get_memo`: Retrieve a specific memo by ID (displays full UUID and repository)
+- `update_memo`: Update memo. Parameters: id (required), repository, title, content, tags
 - `delete_memo`: Delete a memo by ID
-- `list_memos`: Search/list memos with optional query and tag filters
+- `list_memos`: Search/list memos. Parameters: repository (filter by repo), query (search title/content), tags, limit
 - `delete_all_memos`: Delete all memos (use with caution)
+
+**Repository Integration:**
+- `get_repository_info` with `include_memos=true` shows associated memos
+- `memo_limit` parameter controls how many memos to display (default: 10)
+- Memos can be filtered by repository name in list_memos
 
 **Storage:**
 - Memos are stored in `<workspace>/memos.json`
