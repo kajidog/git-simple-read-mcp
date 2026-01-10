@@ -14,12 +14,13 @@ import (
 
 // Memo represents a document memo
 type Memo struct {
-	ID        string    `json:"id"`
-	Title     string    `json:"title"`
-	Content   string    `json:"content"`
-	Tags      []string  `json:"tags,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID         string    `json:"id"`
+	Repository string    `json:"repository,omitempty"` // Associated repository name
+	Title      string    `json:"title"`
+	Content    string    `json:"content"`
+	Tags       []string  `json:"tags,omitempty"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 // MemoStore manages memo storage and operations
@@ -110,18 +111,19 @@ func (ms *MemoStore) save() error {
 }
 
 // AddMemo adds a new memo
-func (ms *MemoStore) AddMemo(title, content string, tags []string) (*Memo, error) {
+func (ms *MemoStore) AddMemo(repository, title, content string, tags []string) (*Memo, error) {
 	if title == "" {
 		return nil, fmt.Errorf("title is required")
 	}
 
 	memo := &Memo{
-		ID:        uuid.New().String(),
-		Title:     title,
-		Content:   content,
-		Tags:      tags,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		ID:         uuid.New().String(),
+		Repository: repository,
+		Title:      title,
+		Content:    content,
+		Tags:       tags,
+		CreatedAt:  time.Now(),
+		UpdatedAt:  time.Now(),
 	}
 
 	ms.mu.Lock()
@@ -149,7 +151,7 @@ func (ms *MemoStore) GetMemo(id string) (*Memo, error) {
 }
 
 // UpdateMemo updates an existing memo
-func (ms *MemoStore) UpdateMemo(id, title, content string, tags []string) (*Memo, error) {
+func (ms *MemoStore) UpdateMemo(id, repository, title, content string, tags []string) (*Memo, error) {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
@@ -158,6 +160,9 @@ func (ms *MemoStore) UpdateMemo(id, title, content string, tags []string) (*Memo
 		return nil, fmt.Errorf("memo not found: %s", id)
 	}
 
+	if repository != "" {
+		memo.Repository = repository
+	}
 	if title != "" {
 		memo.Title = title
 	}
@@ -209,7 +214,7 @@ func (ms *MemoStore) DeleteAllMemos() error {
 }
 
 // SearchMemos searches for memos matching the criteria
-func (ms *MemoStore) SearchMemos(query string, tags []string, limit int) []*Memo {
+func (ms *MemoStore) SearchMemos(query, repository string, tags []string, limit int) []*Memo {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
@@ -217,6 +222,11 @@ func (ms *MemoStore) SearchMemos(query string, tags []string, limit int) []*Memo
 	queryLower := strings.ToLower(query)
 
 	for _, memo := range ms.memos {
+		// Filter by repository if specified
+		if repository != "" && !strings.EqualFold(memo.Repository, repository) {
+			continue
+		}
+
 		// Check if memo matches search criteria
 		matches := false
 
@@ -261,6 +271,11 @@ func (ms *MemoStore) SearchMemos(query string, tags []string, limit int) []*Memo
 	}
 
 	return results
+}
+
+// GetMemosByRepository returns all memos for a specific repository
+func (ms *MemoStore) GetMemosByRepository(repository string, limit int) []*Memo {
+	return ms.SearchMemos("", repository, nil, limit)
 }
 
 // ListAllMemos returns all memos

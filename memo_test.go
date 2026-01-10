@@ -33,13 +33,16 @@ func TestAddMemo(t *testing.T) {
 	store, tmpDir := setupTestMemoStore(t)
 	defer cleanupTestMemoStore(tmpDir)
 
-	memo, err := store.AddMemo("Test Title", "Test Content", []string{"tag1", "tag2"})
+	memo, err := store.AddMemo("test-repo", "Test Title", "Test Content", []string{"tag1", "tag2"})
 	if err != nil {
 		t.Fatalf("Failed to add memo: %v", err)
 	}
 
 	if memo.ID == "" {
 		t.Error("Memo ID should not be empty")
+	}
+	if memo.Repository != "test-repo" {
+		t.Errorf("Expected repository 'test-repo', got '%s'", memo.Repository)
 	}
 	if memo.Title != "Test Title" {
 		t.Errorf("Expected title 'Test Title', got '%s'", memo.Title)
@@ -58,11 +61,26 @@ func TestAddMemo(t *testing.T) {
 	}
 }
 
+func TestAddMemoWithoutRepository(t *testing.T) {
+	store, tmpDir := setupTestMemoStore(t)
+	defer cleanupTestMemoStore(tmpDir)
+
+	// Should work without repository (global memo)
+	memo, err := store.AddMemo("", "Global Memo", "Content without repo", nil)
+	if err != nil {
+		t.Fatalf("Failed to add memo without repository: %v", err)
+	}
+
+	if memo.Repository != "" {
+		t.Errorf("Expected empty repository, got '%s'", memo.Repository)
+	}
+}
+
 func TestAddMemoWithoutTitle(t *testing.T) {
 	store, tmpDir := setupTestMemoStore(t)
 	defer cleanupTestMemoStore(tmpDir)
 
-	_, err := store.AddMemo("", "Test Content", nil)
+	_, err := store.AddMemo("test-repo", "", "Test Content", nil)
 	if err == nil {
 		t.Error("Expected error when adding memo without title")
 	}
@@ -73,7 +91,7 @@ func TestGetMemo(t *testing.T) {
 	defer cleanupTestMemoStore(tmpDir)
 
 	// Add a memo
-	original, err := store.AddMemo("Test Title", "Test Content", []string{"tag1"})
+	original, err := store.AddMemo("test-repo", "Test Title", "Test Content", []string{"tag1"})
 	if err != nil {
 		t.Fatalf("Failed to add memo: %v", err)
 	}
@@ -86,6 +104,9 @@ func TestGetMemo(t *testing.T) {
 
 	if retrieved.ID != original.ID {
 		t.Errorf("Expected ID '%s', got '%s'", original.ID, retrieved.ID)
+	}
+	if retrieved.Repository != original.Repository {
+		t.Errorf("Expected repository '%s', got '%s'", original.Repository, retrieved.Repository)
 	}
 	if retrieved.Title != original.Title {
 		t.Errorf("Expected title '%s', got '%s'", original.Title, retrieved.Title)
@@ -110,17 +131,20 @@ func TestUpdateMemo(t *testing.T) {
 	defer cleanupTestMemoStore(tmpDir)
 
 	// Add a memo
-	original, err := store.AddMemo("Original Title", "Original Content", []string{"tag1"})
+	original, err := store.AddMemo("repo1", "Original Title", "Original Content", []string{"tag1"})
 	if err != nil {
 		t.Fatalf("Failed to add memo: %v", err)
 	}
 
-	// Update the memo
-	updated, err := store.UpdateMemo(original.ID, "Updated Title", "Updated Content", []string{"tag2", "tag3"})
+	// Update the memo (including repository)
+	updated, err := store.UpdateMemo(original.ID, "repo2", "Updated Title", "Updated Content", []string{"tag2", "tag3"})
 	if err != nil {
 		t.Fatalf("Failed to update memo: %v", err)
 	}
 
+	if updated.Repository != "repo2" {
+		t.Errorf("Expected repository 'repo2', got '%s'", updated.Repository)
+	}
 	if updated.Title != "Updated Title" {
 		t.Errorf("Expected title 'Updated Title', got '%s'", updated.Title)
 	}
@@ -140,7 +164,7 @@ func TestDeleteMemo(t *testing.T) {
 	defer cleanupTestMemoStore(tmpDir)
 
 	// Add a memo
-	memo, err := store.AddMemo("Test Title", "Test Content", nil)
+	memo, err := store.AddMemo("test-repo", "Test Title", "Test Content", nil)
 	if err != nil {
 		t.Fatalf("Failed to add memo: %v", err)
 	}
@@ -172,9 +196,9 @@ func TestDeleteAllMemos(t *testing.T) {
 	defer cleanupTestMemoStore(tmpDir)
 
 	// Add multiple memos
-	store.AddMemo("Title 1", "Content 1", nil)
-	store.AddMemo("Title 2", "Content 2", nil)
-	store.AddMemo("Title 3", "Content 3", nil)
+	store.AddMemo("repo1", "Title 1", "Content 1", nil)
+	store.AddMemo("repo2", "Title 2", "Content 2", nil)
+	store.AddMemo("repo1", "Title 3", "Content 3", nil)
 
 	if store.Count() != 3 {
 		t.Errorf("Expected 3 memos, got %d", store.Count())
@@ -194,33 +218,78 @@ func TestSearchMemos(t *testing.T) {
 	store, tmpDir := setupTestMemoStore(t)
 	defer cleanupTestMemoStore(tmpDir)
 
-	// Add test memos
-	store.AddMemo("Go Programming", "Learning Go language", []string{"go", "programming"})
-	store.AddMemo("Python Basics", "Python tutorial", []string{"python", "programming"})
-	store.AddMemo("Web Development", "Building web apps with Go", []string{"go", "web"})
+	// Add test memos with different repositories
+	store.AddMemo("go-project", "Go Programming", "Learning Go language", []string{"go", "programming"})
+	store.AddMemo("python-project", "Python Basics", "Python tutorial", []string{"python", "programming"})
+	store.AddMemo("go-project", "Web Development", "Building web apps with Go", []string{"go", "web"})
 
-	// Search by query
-	results := store.SearchMemos("Go", nil, 10)
+	// Search by query (all repositories)
+	results := store.SearchMemos("Go", "", nil, 10)
 	if len(results) != 2 {
 		t.Errorf("Expected 2 results for 'Go', got %d", len(results))
 	}
 
-	// Search by tag
-	results = store.SearchMemos("", []string{"programming"}, 10)
+	// Search by tag (all repositories)
+	results = store.SearchMemos("", "", []string{"programming"}, 10)
 	if len(results) != 2 {
 		t.Errorf("Expected 2 results for 'programming' tag, got %d", len(results))
 	}
 
 	// Search by query and tag
-	results = store.SearchMemos("Go", []string{"web"}, 10)
+	results = store.SearchMemos("Go", "", []string{"web"}, 10)
 	if len(results) != 1 {
 		t.Errorf("Expected 1 result for 'Go' with 'web' tag, got %d", len(results))
 	}
 
 	// Search with limit
-	results = store.SearchMemos("", nil, 2)
+	results = store.SearchMemos("", "", nil, 2)
 	if len(results) != 2 {
 		t.Errorf("Expected 2 results with limit=2, got %d", len(results))
+	}
+
+	// Search by repository (new feature)
+	results = store.SearchMemos("", "go-project", nil, 10)
+	if len(results) != 2 {
+		t.Errorf("Expected 2 results for 'go-project' repository, got %d", len(results))
+	}
+
+	results = store.SearchMemos("", "python-project", nil, 10)
+	if len(results) != 1 {
+		t.Errorf("Expected 1 result for 'python-project' repository, got %d", len(results))
+	}
+
+	// Search by repository and query
+	results = store.SearchMemos("Go", "go-project", nil, 10)
+	if len(results) != 2 {
+		t.Errorf("Expected 2 results for 'Go' in 'go-project', got %d", len(results))
+	}
+}
+
+func TestGetMemosByRepository(t *testing.T) {
+	store, tmpDir := setupTestMemoStore(t)
+	defer cleanupTestMemoStore(tmpDir)
+
+	// Add memos to different repositories
+	store.AddMemo("repo-a", "Memo A1", "Content A1", nil)
+	store.AddMemo("repo-a", "Memo A2", "Content A2", nil)
+	store.AddMemo("repo-b", "Memo B1", "Content B1", nil)
+	store.AddMemo("", "Global Memo", "No repository", nil) // Global memo
+
+	// Get memos by repository
+	repoAMemos := store.GetMemosByRepository("repo-a", 10)
+	if len(repoAMemos) != 2 {
+		t.Errorf("Expected 2 memos for 'repo-a', got %d", len(repoAMemos))
+	}
+
+	repoBMemos := store.GetMemosByRepository("repo-b", 10)
+	if len(repoBMemos) != 1 {
+		t.Errorf("Expected 1 memo for 'repo-b', got %d", len(repoBMemos))
+	}
+
+	// Non-existent repository
+	emptyMemos := store.GetMemosByRepository("non-existent", 10)
+	if len(emptyMemos) != 0 {
+		t.Errorf("Expected 0 memos for non-existent repository, got %d", len(emptyMemos))
 	}
 }
 
@@ -229,9 +298,9 @@ func TestListAllMemos(t *testing.T) {
 	defer cleanupTestMemoStore(tmpDir)
 
 	// Add test memos
-	store.AddMemo("Title 1", "Content 1", nil)
-	store.AddMemo("Title 2", "Content 2", nil)
-	store.AddMemo("Title 3", "Content 3", nil)
+	store.AddMemo("repo1", "Title 1", "Content 1", nil)
+	store.AddMemo("repo2", "Title 2", "Content 2", nil)
+	store.AddMemo("", "Title 3", "Content 3", nil) // Global memo
 
 	memos := store.ListAllMemos()
 	if len(memos) != 3 {
@@ -254,7 +323,7 @@ func TestMemoPersistence(t *testing.T) {
 		t.Fatalf("Failed to initialize memo store: %v", err)
 	}
 	store1 := GetMemoStore()
-	memo, err := store1.AddMemo("Persistent Memo", "This should persist", []string{"test"})
+	memo, err := store1.AddMemo("persist-repo", "Persistent Memo", "This should persist", []string{"test"})
 	if err != nil {
 		t.Fatalf("Failed to add memo: %v", err)
 	}
@@ -274,6 +343,9 @@ func TestMemoPersistence(t *testing.T) {
 		t.Fatalf("Failed to get memo from reloaded store: %v", err)
 	}
 
+	if retrieved.Repository != "persist-repo" {
+		t.Errorf("Expected repository 'persist-repo', got '%s'", retrieved.Repository)
+	}
 	if retrieved.Title != "Persistent Memo" {
 		t.Errorf("Expected title 'Persistent Memo', got '%s'", retrieved.Title)
 	}
@@ -296,7 +368,7 @@ func TestConcurrentAccess(t *testing.T) {
 	done := make(chan bool)
 	for i := 0; i < 10; i++ {
 		go func(index int) {
-			store.AddMemo("Title", "Content", nil)
+			store.AddMemo("concurrent-repo", "Title", "Content", nil)
 			done <- true
 		}(i)
 	}

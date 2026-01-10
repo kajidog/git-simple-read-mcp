@@ -13,6 +13,8 @@ type GetRepositoryInfoParams struct {
 	Repository         string   `json:"repository,omitempty"`
 	IncludeFiles       bool     `json:"include_files,omitempty"`        // Include file list (like explore_repository)
 	IncludeReadmeFiles bool     `json:"include_readme_files,omitempty"` // Include README file list
+	IncludeMemos       bool     `json:"include_memos,omitempty"`        // Include memos associated with this repository
+	MemoLimit          int      `json:"memo_limit,omitempty"`           // Limit for memo list (default: 10)
 	FileListLimit      int      `json:"file_list_limit,omitempty"`      // Limit for file list (default: 50)
 	Recursive          bool     `json:"recursive,omitempty"`            // Recursive file listing
 	IncludePatterns    []string `json:"include_patterns,omitempty"`     // File patterns to include
@@ -161,7 +163,7 @@ func RegisterGitTools(server *mcp.Server) {
 	// Repository information tool (extended with explore functionality)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_repository_info",
-		Description: "Get repository info. Options: include_files (list files), include_readme_files (find READMEs), recursive, file_list_limit, include/exclude_patterns",
+		Description: "Get repository info. Options: include_files (list files), include_readme_files (find READMEs), include_memos (list associated memos), memo_limit, recursive, file_list_limit, include/exclude_patterns",
 	}, handleGetRepositoryInfo)
 
 	// Repository pull tool
@@ -326,6 +328,41 @@ func handleGetRepositoryInfo(ctx context.Context, req *mcp.CallToolRequest, args
 					result.WriteString(fmt.Sprintf(" (%d lines)", readme.LineCount))
 				}
 				result.WriteString("\n")
+			}
+		}
+	}
+
+	// Include memos associated with this repository
+	if args.IncludeMemos {
+		result.WriteString("\n## Memos\n")
+		store := GetMemoStore()
+		if store == nil {
+			result.WriteString("  Error: memo store not initialized\n")
+		} else {
+			memoLimit := args.MemoLimit
+			if memoLimit == 0 {
+				memoLimit = 10 // Default limit
+			}
+			memos := store.GetMemosByRepository(repository, memoLimit)
+			if len(memos) == 0 {
+				result.WriteString("  No memos found for this repository\n")
+			} else {
+				for _, memo := range memos {
+					result.WriteString(fmt.Sprintf("  📝 %s\n", memo.Title))
+					result.WriteString(fmt.Sprintf("     ID: %s\n", memo.ID))
+					if len(memo.Tags) > 0 {
+						result.WriteString(fmt.Sprintf("     Tags: %s\n", strings.Join(memo.Tags, ", ")))
+					}
+					// Show content preview
+					preview := memo.Content
+					if len(preview) > 80 {
+						preview = preview[:80] + "..."
+					}
+					result.WriteString(fmt.Sprintf("     Preview: %s\n", strings.ReplaceAll(preview, "\n", " ")))
+				}
+				if len(memos) == memoLimit {
+					result.WriteString(fmt.Sprintf("  (Limited to %d memos)\n", memoLimit))
+				}
 			}
 		}
 	}
