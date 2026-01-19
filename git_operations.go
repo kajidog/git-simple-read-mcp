@@ -477,47 +477,84 @@ func CloneRepository(repoURL, repoName string) (string, string, error) {
 }
 
 // extractRepoNameFromURL extracts the repository name from a Git URL
+// Returns format: username-reponame to avoid conflicts between different users
 func extractRepoNameFromURL(repoURL string) (string, error) {
 	if repoURL == "" {
 		return "", fmt.Errorf("repository URL cannot be empty")
 	}
 
 	// Handle different URL formats:
-	// https://github.com/user/repo.git
-	// git@github.com:user/repo.git
-	// https://github.com/user/repo
-	// etc.
+	// https://github.com/user/repo.git -> user-repo
+	// git@github.com:user/repo.git -> user-repo
+	// https://github.com/user/repo -> user-repo
+	// https://gitlab.com/group/subgroup/project.git -> subgroup-project
 
 	// Remove .git suffix if present
 	url := strings.TrimSuffix(repoURL, ".git")
 
-	// Split by / and get the last part
-	parts := strings.Split(url, "/")
-	if len(parts) == 0 {
-		return "", fmt.Errorf("invalid repository URL format")
-	}
+	// Remove trailing slash
+	url = strings.TrimSuffix(url, "/")
 
-	repoName := parts[len(parts)-1]
+	var pathParts []string
 
 	// Handle SSH URLs like git@github.com:user/repo
-	if strings.Contains(repoName, ":") {
-		colonParts := strings.Split(repoName, ":")
-		if len(colonParts) > 1 {
-			pathParts := strings.Split(colonParts[len(colonParts)-1], "/")
-			repoName = pathParts[len(pathParts)-1]
+	if strings.Contains(url, "@") && strings.Contains(url, ":") {
+		// SSH format: git@github.com:user/repo
+		colonIdx := strings.LastIndex(url, ":")
+		if colonIdx != -1 {
+			pathAfterColon := url[colonIdx+1:]
+			pathParts = strings.Split(pathAfterColon, "/")
+		}
+	} else {
+		// HTTPS format: https://github.com/user/repo
+		// Split by / and get path parts (skip protocol and host)
+		allParts := strings.Split(url, "/")
+		// Find where the path starts (after http:// or https://)
+		startIdx := 0
+		for i, part := range allParts {
+			if part == "http:" || part == "https:" {
+				startIdx = i + 2 // Skip "http:" and empty string from "//"
+				break
+			}
+		}
+		if startIdx > 0 && startIdx < len(allParts) {
+			pathParts = allParts[startIdx+1:] // Skip host part
+		} else {
+			// If no protocol found, treat entire path as repository path
+			pathParts = allParts
 		}
 	}
 
-	// Validate repository name
-	if repoName == "" {
+	// Filter out empty parts
+	var cleanParts []string
+	for _, part := range pathParts {
+		if part != "" {
+			cleanParts = append(cleanParts, part)
+		}
+	}
+
+	// We need at least 2 parts: username and repo name
+	if len(cleanParts) < 2 {
+		return "", fmt.Errorf("could not extract username and repository name from URL")
+	}
+
+	// Take the last 2 parts: username and repo name
+	username := cleanParts[len(cleanParts)-2]
+	repoName := cleanParts[len(cleanParts)-1]
+
+	// Validate parts are not empty
+	if username == "" || repoName == "" {
 		return "", fmt.Errorf("could not extract repository name from URL")
 	}
 
-	// Clean repository name (remove invalid characters for directory names)
-	repoName = strings.ReplaceAll(repoName, " ", "-")
-	repoName = strings.ReplaceAll(repoName, ":", "-")
+	// Combine username and repo name with hyphen
+	combined := username + "-" + repoName
 
-	return repoName, nil
+	// Clean repository name (remove invalid characters for directory names)
+	combined = strings.ReplaceAll(combined, " ", "-")
+	combined = strings.ReplaceAll(combined, ":", "-")
+
+	return combined, nil
 }
 
 // FileContentResult represents the content of a single file

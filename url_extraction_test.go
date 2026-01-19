@@ -18,37 +18,38 @@ func TestExtractRepoNameFromURL(t *testing.T) {
 		{
 			name:     "HTTPS URL with .git",
 			url:      "https://github.com/user/repository.git",
-			expected: "repository",
+			expected: "user-repository",
 		},
 		{
 			name:     "HTTPS URL without .git",
 			url:      "https://github.com/user/repository",
-			expected: "repository",
+			expected: "user-repository",
 		},
 		{
 			name:     "SSH URL with .git",
 			url:      "git@github.com:user/repository.git",
-			expected: "repository",
+			expected: "user-repository",
 		},
 		{
 			name:     "SSH URL without .git",
 			url:      "git@github.com:user/repository",
-			expected: "repository",
+			expected: "user-repository",
 		},
 		{
 			name:     "GitLab HTTPS URL",
 			url:      "https://gitlab.com/group/subgroup/project.git",
-			expected: "project",
+			expected: "subgroup-project",
 		},
 		{
 			name:     "Complex path",
 			url:      "https://example.com/path/to/my-awesome-project.git",
-			expected: "my-awesome-project",
+			expected: "to-my-awesome-project",
 		},
 		{
-			name:     "URL with query parameters",
-			url:      "https://github.com/user/repo.git?ref=main",
-			expected: "repo.git?ref=main", // This is expected behavior - query params are part of name
+			name:        "URL with query parameters",
+			url:         "https://github.com/user/repo.git?ref=main",
+			expected:    "user-repo.git?ref=main", // Query params would need special handling
+			expectError: false,
 		},
 		{
 			name:        "Empty URL",
@@ -56,15 +57,14 @@ func TestExtractRepoNameFromURL(t *testing.T) {
 			expectError: true,
 		},
 		{
-			name:     "Invalid URL format",
-			url:      "not-a-valid-url",
-			expected: "not-a-valid-url", // Single segment becomes the name
+			name:        "Invalid URL format - single segment",
+			url:         "not-a-valid-url",
+			expectError: true, // Cannot extract username and repo name from single segment
 		},
 		{
-			name:        "URL ending with slash",
-			url:         "https://github.com/user/repo/",
-			expected:    "", // Empty last segment should cause error
-			expectError: true,
+			name:     "URL ending with slash",
+			url:      "https://github.com/user/repo/",
+			expected: "user-repo",
 		},
 	}
 
@@ -106,7 +106,7 @@ func TestCloneRepositoryWithAutoName(t *testing.T) {
 		}
 
 		// Even on failure, we should get the extracted name in error
-		expectedName := "test-repo"
+		expectedName := "user-test-repo"
 		if repoName != "" && repoName != expectedName {
 			t.Errorf("Expected extracted name %q, got %q", expectedName, repoName)
 		}
@@ -152,8 +152,8 @@ func TestCloneRepositoryMCPHandler(t *testing.T) {
 		}
 
 		content := result.Content[0].(*mcp.TextContent).Text
-		if !contains(content, "test-repo") {
-			t.Errorf("Expected extracted repo name 'test-repo' in error message")
+		if !contains(content, "user-test-repo") {
+			t.Errorf("Expected extracted repo name 'user-test-repo' in error message")
 		}
 	})
 
