@@ -45,40 +45,34 @@ type ListMemosParams struct {
 
 // RegisterMemoTools registers all memo-related MCP tools
 func RegisterMemoTools(server *mcp.Server) {
-	// Add memo tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "add_memo",
-		Description: "Add a new document memo. Options: repository (associate with repo), title (required), content, tags",
+		Description: "Add memo with title, content, optional repo/tags",
 	}, handleAddMemo)
 
-	// Get memo tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_memo",
-		Description: "Get a specific memo by ID",
+		Description: "Get memo by ID",
 	}, handleGetMemo)
 
-	// Update memo tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "update_memo",
-		Description: "Update an existing memo. Options: id (required), repository, title, content, tags",
+		Description: "Update memo by ID",
 	}, handleUpdateMemo)
 
-	// Delete memo tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "delete_memo",
-		Description: "Delete a memo by ID",
+		Description: "Delete memo by ID",
 	}, handleDeleteMemo)
 
-	// List/search memos tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_memos",
-		Description: "List or search memos. Options: repository (filter by repo), query (search in title/content), tags (filter by tags), limit (max results)",
+		Description: "List/search memos. Filter by repo, query, tags.",
 	}, handleListMemos)
 
-	// Delete all memos tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "delete_all_memos",
-		Description: "Delete all memos (use with caution)",
+		Description: "Delete all memos (caution)",
 	}, handleDeleteAllMemos)
 }
 

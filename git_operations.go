@@ -353,11 +353,15 @@ func ListFiles(repoPath, dirPath string, recursive bool, includePatterns, exclud
 				return nil
 			}
 
+			// For directories, check if we should skip the entire subtree
+			if d.IsDir() {
+				if shouldSkipDirectory(relPath, excludePatterns) {
+					return fs.SkipDir // Skip this directory and all its contents
+				}
+			}
+
 			// Check if file should be included based on patterns
 			if !shouldIncludeFile(relPath, includePatterns, excludePatterns) {
-				if d.IsDir() {
-					return nil // Skip directory contents but don't return SkipDir
-				}
 				return nil
 			}
 
@@ -980,20 +984,143 @@ func matchesPatterns(filePath string, patterns []string) bool {
 	}
 
 	for _, pattern := range patterns {
-		if matched, err := filepath.Match(pattern, filepath.Base(filePath)); err == nil && matched {
+		if matchesPattern(filePath, pattern) {
 			return true
 		}
-		// Also try matching against the full path
-		if matched, err := filepath.Match(pattern, filePath); err == nil && matched {
+	}
+	return false
+}
+
+// matchesPattern checks if a file path matches a single pattern
+// Supports:
+// - Simple glob: *.go, *.js
+// - Directory patterns: vendor/, node_modules/
+// - Path patterns: src/*.go, test/*
+// - Recursive patterns: vendor/**, **/test/**
+func matchesPattern(filePath, pattern string) bool {
+	// Handle directory patterns ending with /
+	// e.g., "vendor/" should match "vendor/foo/bar.go"
+	if strings.HasSuffix(pattern, "/") {
+		dirPattern := strings.TrimSuffix(pattern, "/")
+		if filePath == dirPattern || strings.HasPrefix(filePath, dirPattern+"/") {
 			return true
 		}
-		// Support directory patterns like "*.go" or "src/*.go"
-		if strings.Contains(pattern, "/") {
-			if matched, err := filepath.Match(pattern, filePath); err == nil && matched {
+	}
+
+	// Handle recursive patterns with **
+	// e.g., "vendor/**" should match "vendor/foo/bar.go"
+	if strings.Contains(pattern, "**") {
+		return matchesRecursivePattern(filePath, pattern)
+	}
+
+	// Try matching against basename
+	if matched, err := filepath.Match(pattern, filepath.Base(filePath)); err == nil && matched {
+		return true
+	}
+
+	// Try matching against the full path
+	if matched, err := filepath.Match(pattern, filePath); err == nil && matched {
+		return true
+	}
+
+	// For patterns with /, check if any path prefix matches
+	// e.g., "vendor/*" should match "vendor/foo" but also check parent dirs
+	if strings.Contains(pattern, "/") {
+		// Check if pattern matches any parent directory path
+		parts := strings.Split(filePath, "/")
+		for i := 1; i <= len(parts); i++ {
+			subPath := strings.Join(parts[:i], "/")
+			if matched, err := filepath.Match(pattern, subPath); err == nil && matched {
 				return true
 			}
 		}
 	}
+
+	return false
+}
+
+// matchesRecursivePattern handles ** glob patterns
+// ** matches zero or more directory levels
+func matchesRecursivePattern(filePath, pattern string) bool {
+	// Handle patterns like **/test/** (directory anywhere in path)
+	if strings.HasPrefix(pattern, "**/") && strings.HasSuffix(pattern, "/**") {
+		// Extract the middle part, e.g., "test" from "**/test/**"
+		middle := strings.TrimPrefix(pattern, "**/")
+		middle = strings.TrimSuffix(middle, "/**")
+		// Check if any path component matches the middle part
+		parts := strings.Split(filePath, "/")
+		for _, part := range parts {
+			if part == middle {
+				return true
+			}
+		}
+		return false
+	}
+
+	// Handle patterns starting with **/ (match any prefix)
+	if strings.HasPrefix(pattern, "**/") {
+		suffix := strings.TrimPrefix(pattern, "**/")
+		// Try matching suffix against the path and all subpaths
+		if matchesPattern(filePath, suffix) {
+			return true
+		}
+		parts := strings.Split(filePath, "/")
+		for i := range parts {
+			subPath := strings.Join(parts[i:], "/")
+			if matchesPattern(subPath, suffix) {
+				return true
+			}
+		}
+		return false
+	}
+
+	// Split pattern by **
+	parts := strings.Split(pattern, "**")
+
+	if len(parts) == 2 {
+		prefix := strings.TrimSuffix(parts[0], "/")
+		suffix := strings.TrimPrefix(parts[1], "/")
+
+		// Check prefix - must match exact directory boundary
+		// e.g., "vendor/**" should match "vendor/foo" but NOT "vendor2/foo"
+		if prefix != "" {
+			if filePath != prefix && !strings.HasPrefix(filePath, prefix+"/") {
+				return false
+			}
+		}
+
+		// Check suffix
+		if suffix != "" {
+			// Suffix can be a pattern like "*.go"
+			if strings.Contains(suffix, "*") && !strings.Contains(suffix, "**") {
+				// Match suffix pattern against basename or remaining path
+				remaining := filePath
+				if prefix != "" {
+					remaining = strings.TrimPrefix(filePath, prefix)
+					remaining = strings.TrimPrefix(remaining, "/")
+				}
+				// Try matching against basename
+				if matched, err := filepath.Match(suffix, filepath.Base(remaining)); err == nil && matched {
+					return true
+				}
+				// Try matching against each path segment
+				segments := strings.Split(remaining, "/")
+				for i := range segments {
+					subPath := strings.Join(segments[i:], "/")
+					if matched, err := filepath.Match(suffix, subPath); err == nil && matched {
+						return true
+					}
+				}
+				return false
+			}
+			return strings.HasSuffix(filePath, suffix) || strings.Contains(filePath, suffix+"/")
+		}
+
+		// No suffix means match everything under prefix
+		return true
+	}
+
+	// Fallback for complex patterns - try simple prefix/suffix matching
 	return false
 }
 
@@ -1006,6 +1133,49 @@ func shouldIncludeFile(filePath string, includePatterns, excludePatterns []strin
 
 	// Check include patterns
 	return matchesPatterns(filePath, includePatterns)
+}
+
+// shouldSkipDirectory checks if a directory should be completely skipped during traversal
+// This is an optimization to avoid walking into large excluded directories like vendor/ or node_modules/
+func shouldSkipDirectory(dirPath string, excludePatterns []string) bool {
+	if len(excludePatterns) == 0 {
+		return false
+	}
+
+	for _, pattern := range excludePatterns {
+		// Check directory patterns ending with /
+		if strings.HasSuffix(pattern, "/") {
+			dirPattern := strings.TrimSuffix(pattern, "/")
+			if dirPath == dirPattern || strings.HasPrefix(dirPath, dirPattern+"/") {
+				return true
+			}
+		}
+
+		// Check recursive patterns like vendor/**
+		if strings.HasSuffix(pattern, "/**") {
+			dirPattern := strings.TrimSuffix(pattern, "/**")
+			if dirPath == dirPattern || strings.HasPrefix(dirPath, dirPattern+"/") {
+				return true
+			}
+		}
+
+		// Check simple directory name match (e.g., "vendor" matches "vendor" directory)
+		if !strings.Contains(pattern, "*") && !strings.Contains(pattern, "/") {
+			if dirPath == pattern || strings.HasPrefix(dirPath, pattern+"/") {
+				return true
+			}
+		}
+
+		// Check path patterns like "src/vendor/*"
+		if strings.HasSuffix(pattern, "/*") {
+			dirPattern := strings.TrimSuffix(pattern, "/*")
+			if dirPath == dirPattern {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 // countFileCharacters counts characters and lines in a text file

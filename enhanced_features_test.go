@@ -398,3 +398,182 @@ func TestPatternHelperFunctions(t *testing.T) {
 		}
 	})
 }
+
+// TestDirectoryPatternExclusion tests directory patterns with trailing slash
+func TestDirectoryPatternExclusion(t *testing.T) {
+	t.Run("matchesPattern with directory patterns", func(t *testing.T) {
+		tests := []struct {
+			filePath string
+			pattern  string
+			expected bool
+		}{
+			// Directory patterns with trailing /
+			{"vendor/foo/bar.go", "vendor/", true},
+			{"vendor/package/main.go", "vendor/", true},
+			{"node_modules/react/index.js", "node_modules/", true},
+			{"src/vendor/local.go", "vendor/", false}, // nested vendor should not match
+			{"vendorfile.go", "vendor/", false},       // file starting with vendor should not match
+
+			// Recursive patterns with **
+			{"vendor/foo/bar.go", "vendor/**", true},
+			{"vendor/deep/nested/file.go", "vendor/**", true},
+			{"src/test/file.go", "**/test/**", true},
+			{"test/file.go", "**/test/**", true},
+			{"vendor/foo.go", "vendor/**/*.go", true},
+			{"vendor/sub/bar.go", "vendor/**/*.go", true},
+
+			// Directory boundary tests - must not match similar prefixes
+			{"vendor2/foo.go", "vendor/**", false},        // vendor2 should NOT match vendor/**
+			{"vendor2/sub/bar.go", "vendor/**/*.go", false}, // vendor2 should NOT match vendor/**/*.go
+			{"node_modules2/pkg/index.js", "node_modules/**", false},
+			{"vendors/dep/main.go", "vendor/**", false},   // vendors should NOT match vendor/**
+
+			// Simple patterns should still work
+			{"vendor/foo.go", "vendor/*", true},
+			{"main.go", "*.go", true},
+		}
+
+		for _, tt := range tests {
+			result := matchesPattern(tt.filePath, tt.pattern)
+			if result != tt.expected {
+				t.Errorf("matchesPattern(%q, %q) = %v, want %v",
+					tt.filePath, tt.pattern, result, tt.expected)
+			}
+		}
+	})
+
+	t.Run("shouldSkipDirectory", func(t *testing.T) {
+		tests := []struct {
+			dirPath  string
+			patterns []string
+			expected bool
+		}{
+			// Directory patterns with trailing /
+			{"vendor", []string{"vendor/"}, true},
+			{"vendor/sub", []string{"vendor/"}, true},
+			{"node_modules", []string{"node_modules/"}, true},
+			{"src", []string{"vendor/"}, false},
+
+			// Recursive patterns
+			{"vendor", []string{"vendor/**"}, true},
+			{"vendor/sub", []string{"vendor/**"}, true},
+
+			// Simple directory name
+			{"vendor", []string{"vendor"}, true},
+			{"vendor/sub", []string{"vendor"}, true},
+			{"vendorfile", []string{"vendor"}, false},
+
+			// Path patterns
+			{"src/vendor", []string{"src/vendor/*"}, true},
+			{"vendor", []string{"src/vendor/*"}, false},
+
+			// Multiple patterns
+			{"vendor", []string{"node_modules/", "vendor/"}, true},
+			{"node_modules", []string{"node_modules/", "vendor/"}, true},
+			{"src", []string{"node_modules/", "vendor/"}, false},
+
+			// Empty patterns
+			{"vendor", []string{}, false},
+		}
+
+		for _, tt := range tests {
+			result := shouldSkipDirectory(tt.dirPath, tt.patterns)
+			if result != tt.expected {
+				t.Errorf("shouldSkipDirectory(%q, %v) = %v, want %v",
+					tt.dirPath, tt.patterns, result, tt.expected)
+			}
+		}
+	})
+}
+
+// TestListFilesWithDirectoryExclusion tests that ListFiles properly skips excluded directories
+func TestListFilesWithDirectoryExclusion(t *testing.T) {
+	// Initialize workspace for testing
+	if err := InitializeWorkspace("./test_workspace_dir_exclusion"); err != nil {
+		t.Fatalf("Failed to initialize workspace: %v", err)
+	}
+	defer os.RemoveAll("./test_workspace_dir_exclusion")
+
+	repo := CreateTestRepository(t)
+
+	// Create test files including vendor and node_modules directories
+	testFiles := map[string]string{
+		"main.go":                          "package main",
+		"utils.go":                         "package utils",
+		"vendor/dep/main.go":               "package dep",
+		"vendor/dep/sub/util.go":           "package sub",
+		"node_modules/react/index.js":      "module.exports = {}",
+		"node_modules/react/lib/core.js":   "exports.core = {}",
+		"src/app.go":                       "package app",
+		"src/vendor/local.go":              "package local", // nested vendor should be included
+	}
+
+	for path, content := range testFiles {
+		repo.WriteFile(path, content)
+	}
+	repo.AddCommit("Add test files with vendor and node_modules")
+
+	tests := []struct {
+		name             string
+		excludePatterns  []string
+		expectedFiles    []string
+		notExpectedFiles []string
+	}{
+		{
+			name:             "Exclude vendor directory with trailing slash",
+			excludePatterns:  []string{"vendor/"},
+			expectedFiles:    []string{"main.go", "utils.go", "src/app.go", "src/vendor/local.go"},
+			notExpectedFiles: []string{"vendor/dep/main.go", "vendor/dep/sub/util.go"},
+		},
+		{
+			name:             "Exclude node_modules with recursive pattern",
+			excludePatterns:  []string{"node_modules/**"},
+			expectedFiles:    []string{"main.go", "src/app.go"},
+			notExpectedFiles: []string{"node_modules/react/index.js", "node_modules/react/lib/core.js"},
+		},
+		{
+			name:             "Exclude multiple directories",
+			excludePatterns:  []string{"vendor/", "node_modules/"},
+			expectedFiles:    []string{"main.go", "utils.go", "src/app.go", "src/vendor/local.go"},
+			notExpectedFiles: []string{"vendor/dep/main.go", "node_modules/react/index.js"},
+		},
+		{
+			name:             "Exclude with simple directory name",
+			excludePatterns:  []string{"vendor"},
+			expectedFiles:    []string{"main.go", "src/app.go", "src/vendor/local.go"},
+			notExpectedFiles: []string{"vendor/dep/main.go"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			files, err := ListFiles(repo.Path, ".", true, nil, tt.excludePatterns, 100)
+			if err != nil {
+				t.Fatalf("ListFiles failed: %v", err)
+			}
+
+			// Check expected files are included
+			for _, expectedFile := range tt.expectedFiles {
+				found := false
+				for _, file := range files {
+					if file.Path == expectedFile {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("Expected file %s not found in results", expectedFile)
+				}
+			}
+
+			// Check not expected files are excluded
+			for _, notExpectedFile := range tt.notExpectedFiles {
+				for _, file := range files {
+					if file.Path == notExpectedFile {
+						t.Errorf("Unexpected file %s found in results", notExpectedFile)
+					}
+				}
+			}
+		})
+	}
+}

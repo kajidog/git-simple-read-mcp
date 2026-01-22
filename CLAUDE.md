@@ -98,9 +98,20 @@ Tools use consistent parameter naming:
 ### Enhanced File Operations
 
 **Pattern Filtering:**
-- `include_patterns` and `exclude_patterns` support glob patterns (*.go, src/*, etc.)
+- `include_patterns` and `exclude_patterns` support glob patterns
 - Applied to both `list_files` and `search_files` operations
 - Uses Go's `filepath.Match` for pattern matching
+
+**Supported Pattern Types:**
+- Simple glob: `*.go`, `*.js`, `*_test.go`
+- Directory patterns with trailing `/`: `vendor/`, `node_modules/` (excludes entire directory tree)
+- Path patterns: `src/*.go`, `test/*`
+- Recursive patterns with `**`: `vendor/**`, `**/test/**`, `vendor/**/*.go`
+
+**Directory Exclusion Optimization:**
+- When a directory matches an exclude pattern (`vendor/`, `vendor/**`, etc.), the entire directory subtree is skipped using `fs.SkipDir`
+- This significantly improves performance when excluding large directories like `node_modules/` or `vendor/`
+- The `shouldSkipDirectory()` function handles directory-level pattern matching
 
 **File Information Enhancement:**
 - Character count and line count for text files
