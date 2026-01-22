@@ -1081,9 +1081,12 @@ func matchesRecursivePattern(filePath, pattern string) bool {
 		prefix := strings.TrimSuffix(parts[0], "/")
 		suffix := strings.TrimPrefix(parts[1], "/")
 
-		// Check prefix
-		if prefix != "" && !strings.HasPrefix(filePath, prefix) && !strings.HasPrefix(filePath, prefix+"/") {
-			return false
+		// Check prefix - must match exact directory boundary
+		// e.g., "vendor/**" should match "vendor/foo" but NOT "vendor2/foo"
+		if prefix != "" {
+			if filePath != prefix && !strings.HasPrefix(filePath, prefix+"/") {
+				return false
+			}
 		}
 
 		// Check suffix

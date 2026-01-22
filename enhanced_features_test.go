@@ -422,6 +422,12 @@ func TestDirectoryPatternExclusion(t *testing.T) {
 			{"vendor/foo.go", "vendor/**/*.go", true},
 			{"vendor/sub/bar.go", "vendor/**/*.go", true},
 
+			// Directory boundary tests - must not match similar prefixes
+			{"vendor2/foo.go", "vendor/**", false},        // vendor2 should NOT match vendor/**
+			{"vendor2/sub/bar.go", "vendor/**/*.go", false}, // vendor2 should NOT match vendor/**/*.go
+			{"node_modules2/pkg/index.js", "node_modules/**", false},
+			{"vendors/dep/main.go", "vendor/**", false},   // vendors should NOT match vendor/**
+
 			// Simple patterns should still work
 			{"vendor/foo.go", "vendor/*", true},
 			{"main.go", "*.go", true},
