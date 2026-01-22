@@ -160,93 +160,79 @@ type RepoSearchResult struct {
 
 // RegisterGitTools registers all Git-related MCP tools
 func RegisterGitTools(server *mcp.Server) {
-	// Repository information tool (extended with explore functionality)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_repository_info",
-		Description: "Get repository info. Options: include_files (list files), include_readme_files (find READMEs), include_memos (list associated memos), memo_limit, recursive, file_list_limit, include/exclude_patterns",
+		Description: "Get repo info. Can include files, READMEs, memos via flags.",
 	}, handleGetRepositoryInfo)
 
-	// Repository pull tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "pull_repository",
-		Description: "Execute git pull on the specified repository",
+		Description: "Git pull on repository",
 	}, handlePullRepository)
 
-	// List branches tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_branches",
-		Description: "List all branches in the repository with pagination support",
+		Description: "List branches in repository",
 	}, handleListBranches)
 
-	// Switch branch tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "switch_branch",
-		Description: "Switch to the specified branch in the repository",
+		Description: "Switch to branch",
 	}, handleSwitchBranch)
 
-	// Search files tool (extended with cross-repo search)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "search_files",
-		Description: "Search files for keywords. Use 'repositories' array for cross-repo search. Options: search_mode (and/or), include_filename, context_lines, include/exclude_patterns",
+		Description: "Search files by keywords. Cross-repo via repositories array.",
 	}, handleSearchFiles)
 
-	// List files tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_files",
-		Description: "List files in specified directory with optional recursive expansion and pagination",
+		Description: "List files in directory with pattern filtering",
 	}, handleListFiles)
 
-	// Get file content tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_file_content",
-		Description: "Get file content. Use start_line and end_line for line range (e.g., start_line=100, end_line=200)",
+		Description: "Get file content with line range support",
 	}, handleGetFileContent)
 
-	// Clone repository tool (extended with setup functionality)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "clone_repository",
-		Description: "Clone a repository. Options: include_info (get repo info), include_branches (list branches after clone)",
+		Description: "Clone repo. Can include info and branches.",
 	}, handleCloneRepository)
 
-	// List workspace repositories tool (extended with overview functionality)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_repositories",
-		Description: "List repositories. Options: include_status (git status), include_commits (recent commits), commit_limit",
+		Description: "List workspace repos with optional status/commits",
 	}, handleListWorkspaceRepositories)
 
-	// Remove repository tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "remove_repository",
-		Description: "Remove a repository from the workspace",
+		Description: "Remove repository from workspace",
 	}, handleRemoveRepository)
 
-	// Get README files tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_readme_files",
-		Description: "Find and list all README files in the repository with optional recursive search",
+		Description: "Find README files in repository",
 	}, handleGetReadmeFiles)
 
-	// Add new tools for commit history and diff
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_commits",
-		Description: "List the commit history for a repository",
+		Description: "List commit history",
 	}, handleListCommits)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_commit_diff",
-		Description: "Get the diff for a specific commit, including the commit message",
+		Description: "Get diff for a commit",
 	}, handleGetCommitDiff)
 
-	// Session tool (unified set/get/clear)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "session",
-		Description: "Manage session config. action: 'set' (set defaults), 'get' (view config), 'clear' (reset). For 'set': default_repository, default_include/exclude_patterns, default_*_limit",
+		Description: "Session config: action=set/get/clear. Set defaults for repo, patterns, limits.",
 	}, handleSession)
 
-	// Batch tool (unified clone/pull/status)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "batch",
-		Description: "Batch operations. operation: 'clone' (urls array), 'pull' (repositories array, empty=all), 'status' (repositories array, empty=all)",
+		Description: "Batch ops: operation=clone/pull/status on multiple repos",
 	}, handleBatch)
 }
 
@@ -1190,7 +1176,7 @@ func handleSession(ctx context.Context, req *mcp.CallToolRequest, args SessionPa
 		sc := GetSessionConfig()
 		if sc.IsEmpty() {
 			return &mcp.CallToolResult{
-				Content: []mcp.Content{&mcp.TextContent{Text: "No session configuration set. Using defaults."}},
+				Content: []mcp.Content{&mcp.TextContent{Text: "No session configuration set.\nUse action='set' with: default_repository, default_include_patterns, default_exclude_patterns, default_search_limit, default_list_files_limit, default_max_lines, default_commit_limit"}},
 			}, nil, nil
 		}
 		var result strings.Builder
