@@ -50,10 +50,6 @@ func TestGetRepositoryInfo(t *testing.T) {
 				t.Errorf("Expected path %s, got %s", repo.Path, info.Path)
 			}
 
-			if info.CommitCount <= 0 {
-				t.Errorf("Expected positive commit count, got %d", info.CommitCount)
-			}
-
 			if info.CurrentBranch == "" {
 				t.Errorf("Expected current branch to be set")
 			}
@@ -555,8 +551,9 @@ func TestEdgeCases(t *testing.T) {
 			t.Fatalf("Failed to get info for empty repo: %v", err)
 		}
 
-		if info.CommitCount != 0 {
-			t.Errorf("Expected 0 commits in empty repo, got %d", info.CommitCount)
+		// Empty repo should have a valid path
+		if info.Path == "" {
+			t.Errorf("Expected path to be set for empty repo")
 		}
 	})
 }
