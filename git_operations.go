@@ -15,7 +15,6 @@ import (
 // RepositoryInfo contains basic repository information
 type RepositoryInfo struct {
 	Path          string    `json:"path"`
-	CommitCount   int       `json:"commit_count"`
 	LastUpdate    time.Time `json:"last_update"`
 	CurrentBranch string    `json:"current_branch"`
 	License       string    `json:"license,omitempty"`
@@ -52,14 +51,12 @@ type MatchLine struct {
 	Context    []string `json:"context,omitempty"` // surrounding context lines
 }
 
-// FileInfo represents file or directory information
+// FileInfo represents file information
 type FileInfo struct {
 	Name      string    `json:"name"`
 	Path      string    `json:"path"`
-	IsDir     bool      `json:"is_dir"`
 	Size      int64     `json:"size,omitempty"`
 	ModTime   time.Time `json:"mod_time,omitempty"`
-	CharCount int       `json:"char_count,omitempty"` // Character count for text files
 	LineCount int       `json:"line_count,omitempty"` // Line count for text files
 }
 
@@ -84,11 +81,6 @@ func GetRepositoryInfo(repoPath string) (*RepositoryInfo, error) {
 	}
 
 	info := &RepositoryInfo{Path: repoPath}
-
-	// Get commit count
-	if count, err := getCommitCount(repoPath); err == nil {
-		info.CommitCount = count
-	}
 
 	// Get last update
 	if lastUpdate, err := getLastCommit(repoPath); err == nil {
@@ -358,6 +350,7 @@ func ListFiles(repoPath, dirPath string, recursive bool, includePatterns, exclud
 				if shouldSkipDirectory(relPath, excludePatterns) {
 					return fs.SkipDir // Skip this directory and all its contents
 				}
+				return nil // Skip directory entries in output
 			}
 
 			// Check if file should be included based on patterns
@@ -370,19 +363,13 @@ func ListFiles(repoPath, dirPath string, recursive bool, includePatterns, exclud
 				return nil
 			}
 
+			_, lineCount := countFileCharacters(path)
 			fileInfo := FileInfo{
-				Name:    d.Name(),
-				Path:    relPath,
-				IsDir:   d.IsDir(),
-				Size:    info.Size(),
-				ModTime: info.ModTime(),
-			}
-
-			// Add character and line count for text files
-			if !d.IsDir() {
-				charCount, lineCount := countFileCharacters(path)
-				fileInfo.CharCount = charCount
-				fileInfo.LineCount = lineCount
+				Name:      d.Name(),
+				Path:      relPath,
+				Size:      info.Size(),
+				ModTime:   info.ModTime(),
+				LineCount: lineCount,
 			}
 
 			files = append(files, fileInfo)
@@ -409,6 +396,11 @@ func ListFiles(repoPath, dirPath string, recursive bool, includePatterns, exclud
 				break
 			}
 
+			// Skip directories in output
+			if entry.IsDir() {
+				continue
+			}
+
 			relPath := filepath.Join(dirPath, entry.Name())
 
 			// Check if file should be included based on patterns
@@ -421,20 +413,14 @@ func ListFiles(repoPath, dirPath string, recursive bool, includePatterns, exclud
 				continue
 			}
 
+			entryFullPath := filepath.Join(repoPath, relPath)
+			_, lineCount := countFileCharacters(entryFullPath)
 			fileInfo := FileInfo{
-				Name:    entry.Name(),
-				Path:    relPath,
-				IsDir:   entry.IsDir(),
-				Size:    info.Size(),
-				ModTime: info.ModTime(),
-			}
-
-			// Add character and line count for text files
-			if !entry.IsDir() {
-				fullPath := filepath.Join(repoPath, relPath)
-				charCount, lineCount := countFileCharacters(fullPath)
-				fileInfo.CharCount = charCount
-				fileInfo.LineCount = lineCount
+				Name:      entry.Name(),
+				Path:      relPath,
+				Size:      info.Size(),
+				ModTime:   info.ModTime(),
+				LineCount: lineCount,
 			}
 
 			files = append(files, fileInfo)
@@ -540,6 +526,80 @@ type ReadmeFileInfo struct {
 	Size      int64     `json:"size"`
 	ModTime   time.Time `json:"mod_time"`
 	LineCount int       `json:"line_count,omitempty"`
+}
+
+// FileStatistics contains file statistics for a repository
+type FileStatistics struct {
+	TotalFiles      int            `json:"total_files"`
+	TotalDirs       int            `json:"total_dirs"`
+	ExtensionCounts map[string]int `json:"extension_counts"` // extension -> count
+}
+
+// GetFileStatistics returns file statistics for a repository
+func GetFileStatistics(repoPath string, excludePatterns []string) (*FileStatistics, error) {
+	// Validate workspace path
+	validPath, err := ValidateWorkspacePath(repoPath)
+	if err != nil {
+		return nil, err
+	}
+	repoPath = validPath
+
+	stats := &FileStatistics{
+		ExtensionCounts: make(map[string]int),
+	}
+
+	err = filepath.WalkDir(repoPath, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil // Skip errors, continue walking
+		}
+
+		// Skip .git directory
+		if d.IsDir() && d.Name() == ".git" {
+			return fs.SkipDir
+		}
+
+		// Get relative path
+		relPath, err := filepath.Rel(repoPath, path)
+		if err != nil {
+			return nil
+		}
+
+		// Skip root
+		if relPath == "." {
+			return nil
+		}
+
+		// For directories, check if we should skip the entire subtree
+		if d.IsDir() {
+			if shouldSkipDirectory(relPath, excludePatterns) {
+				return fs.SkipDir
+			}
+			stats.TotalDirs++
+			return nil
+		}
+
+		// Check exclude patterns for files
+		if len(excludePatterns) > 0 && matchesPatterns(relPath, excludePatterns) {
+			return nil
+		}
+
+		stats.TotalFiles++
+
+		// Count by extension
+		ext := strings.ToLower(filepath.Ext(d.Name()))
+		if ext == "" {
+			ext = "(no ext)"
+		}
+		stats.ExtensionCounts[ext]++
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to walk directory: %v", err)
+	}
+
+	return stats, nil
 }
 
 // GetFileContent reads the content of a file

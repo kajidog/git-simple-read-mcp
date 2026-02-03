@@ -10,15 +10,10 @@ import (
 
 // GetRepositoryInfoParams parameters for get_repository_info tool
 type GetRepositoryInfoParams struct {
-	Repository         string   `json:"repository,omitempty"`
-	IncludeFiles       bool     `json:"include_files,omitempty"`        // Include file list (like explore_repository)
-	IncludeReadmeFiles bool     `json:"include_readme_files,omitempty"` // Include README file list
-	IncludeMemos       bool     `json:"include_memos,omitempty"`        // Include memos associated with this repository
-	MemoLimit          int      `json:"memo_limit,omitempty"`           // Limit for memo list (default: 10)
-	FileListLimit      int      `json:"file_list_limit,omitempty"`      // Limit for file list (default: 50)
-	Recursive          bool     `json:"recursive,omitempty"`            // Recursive file listing
-	IncludePatterns    []string `json:"include_patterns,omitempty"`     // File patterns to include
-	ExcludePatterns    []string `json:"exclude_patterns,omitempty"`     // File patterns to exclude
+	Repository       string   `json:"repository,omitempty"`
+	IncludeMemos     bool     `json:"include_memos,omitempty"`     // Include memos associated with this repository
+	MemoLimit        int      `json:"memo_limit,omitempty"`        // Limit for memo list (default: 10)
+	ExcludePatterns  []string `json:"exclude_patterns,omitempty"` // File patterns to exclude from statistics
 }
 
 // PullRepositoryParams parameters for pull_repository tool
@@ -261,7 +256,6 @@ func handleGetRepositoryInfo(ctx context.Context, req *mcp.CallToolRequest, args
 	result.WriteString(fmt.Sprintf("Repository: %s\n", info.Path))
 	result.WriteString(strings.Repeat("=", 50) + "\n\n")
 	result.WriteString(fmt.Sprintf("Branch: %s\n", info.CurrentBranch))
-	result.WriteString(fmt.Sprintf("Commits: %d\n", info.CommitCount))
 	if !info.LastUpdate.IsZero() {
 		result.WriteString(fmt.Sprintf("Updated: %s\n", info.LastUpdate.Format("2006-01-02 15:04:05")))
 	}
@@ -272,49 +266,49 @@ func handleGetRepositoryInfo(ctx context.Context, req *mcp.CallToolRequest, args
 		result.WriteString(fmt.Sprintf("License: %s\n", info.License))
 	}
 
-	// Include file list if requested
-	if args.IncludeFiles {
-		result.WriteString("\n## Files\n")
-		limit := args.FileListLimit
-		if limit == 0 {
-			limit = sc.GetListFilesLimit(0)
-		}
-		includePatterns := sc.GetIncludePatterns(args.IncludePatterns)
-		excludePatterns := sc.GetExcludePatterns(args.ExcludePatterns)
+	// File statistics (always shown)
+	excludePatterns := sc.GetExcludePatterns(args.ExcludePatterns)
+	stats, err := GetFileStatistics(repository, excludePatterns)
+	if err == nil {
+		result.WriteString(fmt.Sprintf("\nFiles: %d, Dirs: %d\n", stats.TotalFiles, stats.TotalDirs))
 
-		files, err := ListFiles(repository, ".", args.Recursive, includePatterns, excludePatterns, limit)
-		if err != nil {
-			result.WriteString(fmt.Sprintf("Error: %v\n", err))
-		} else {
-			for _, file := range files {
-				if file.IsDir {
-					result.WriteString(fmt.Sprintf("  📁 %s/\n", file.Path))
+		// Sort extensions by count and show top ones
+		if len(stats.ExtensionCounts) > 0 {
+			result.WriteString("Extensions: ")
+			type extCount struct {
+				ext   string
+				count int
+			}
+			var sorted []extCount
+			for ext, count := range stats.ExtensionCounts {
+				sorted = append(sorted, extCount{ext, count})
+			}
+			// Sort by count descending
+			for i := 0; i < len(sorted)-1; i++ {
+				for j := i + 1; j < len(sorted); j++ {
+					if sorted[j].count > sorted[i].count {
+						sorted[i], sorted[j] = sorted[j], sorted[i]
+					}
+				}
+			}
+			// Show top 10
+			shown := 0
+			others := 0
+			for _, ec := range sorted {
+				if shown < 10 {
+					if shown > 0 {
+						result.WriteString(", ")
+					}
+					result.WriteString(fmt.Sprintf("%s(%d)", ec.ext, ec.count))
+					shown++
 				} else {
-					result.WriteString(fmt.Sprintf("  📄 %s\n", file.Path))
+					others += ec.count
 				}
 			}
-			if len(files) == limit {
-				result.WriteString(fmt.Sprintf("  (Limited to %d)\n", limit))
+			if others > 0 {
+				result.WriteString(fmt.Sprintf(", others(%d)", others))
 			}
-		}
-	}
-
-	// Include README files if requested
-	if args.IncludeReadmeFiles {
-		result.WriteString("\n## README Files\n")
-		readmeFiles, err := GetReadmeFiles(repository, args.Recursive)
-		if err != nil {
-			result.WriteString(fmt.Sprintf("Error: %v\n", err))
-		} else if len(readmeFiles) == 0 {
-			result.WriteString("  No README files found\n")
-		} else {
-			for _, readme := range readmeFiles {
-				result.WriteString(fmt.Sprintf("  📄 %s", readme.Path))
-				if readme.LineCount > 0 {
-					result.WriteString(fmt.Sprintf(" (%d lines)", readme.LineCount))
-				}
-				result.WriteString("\n")
-			}
+			result.WriteString("\n")
 		}
 	}
 
@@ -353,8 +347,8 @@ func handleGetRepositoryInfo(ctx context.Context, req *mcp.CallToolRequest, args
 		}
 	}
 
-	// Include main README content
-	if info.ReadmeContent != "" && !args.IncludeFiles && !args.IncludeReadmeFiles {
+	// Include main README content (always shown if available)
+	if info.ReadmeContent != "" {
 		result.WriteString("\n## README\n")
 		result.WriteString(strings.Repeat("-", 30) + "\n")
 		result.WriteString(info.ReadmeContent)
@@ -677,7 +671,6 @@ func handleCloneRepository(ctx context.Context, req *mcp.CallToolRequest, args C
 			result.WriteString(fmt.Sprintf("Error: %v\n", err))
 		} else {
 			result.WriteString(fmt.Sprintf("Branch: %s\n", info.CurrentBranch))
-			result.WriteString(fmt.Sprintf("Commits: %d\n", info.CommitCount))
 			if info.RemoteURL != "" {
 				result.WriteString(fmt.Sprintf("Remote: %s\n", info.RemoteURL))
 			}
@@ -1000,42 +993,35 @@ func formatFileList(files []FileInfo, directory string, recursive bool, limit in
 		modeStr = "recursive"
 	}
 
-	result.WriteString(fmt.Sprintf("Files in '%s' (%s, %d items):\n", directory, modeStr, len(files)))
+	result.WriteString(fmt.Sprintf("Files in '%s' (%s, %d files):\n", directory, modeStr, len(files)))
 	result.WriteString(strings.Repeat("-", 50) + "\n")
 
 	for _, file := range files {
-		if file.IsDir {
-			result.WriteString(fmt.Sprintf("📁 %s/\n", file.Path))
-		} else {
-			infoStr := ""
-			if file.Size > 0 || file.CharCount > 0 {
-				var parts []string
+		infoStr := ""
+		if file.Size > 0 || file.LineCount > 0 {
+			var parts []string
 
-				// Add file size
-				if file.Size > 0 {
-					if file.Size < 1024 {
-						parts = append(parts, fmt.Sprintf("%d bytes", file.Size))
-					} else if file.Size < 1024*1024 {
-						parts = append(parts, fmt.Sprintf("%.1f KB", float64(file.Size)/1024))
-					} else {
-						parts = append(parts, fmt.Sprintf("%.1f MB", float64(file.Size)/(1024*1024)))
-					}
-				}
-
-				// Add character and line count
-				if file.CharCount > 0 {
-					parts = append(parts, fmt.Sprintf("%d chars", file.CharCount))
-				}
-				if file.LineCount > 0 {
-					parts = append(parts, fmt.Sprintf("%d lines", file.LineCount))
-				}
-
-				if len(parts) > 0 {
-					infoStr = fmt.Sprintf(" (%s)", strings.Join(parts, ", "))
+			// Add file size
+			if file.Size > 0 {
+				if file.Size < 1024 {
+					parts = append(parts, fmt.Sprintf("%dB", file.Size))
+				} else if file.Size < 1024*1024 {
+					parts = append(parts, fmt.Sprintf("%.1fKB", float64(file.Size)/1024))
+				} else {
+					parts = append(parts, fmt.Sprintf("%.1fMB", float64(file.Size)/(1024*1024)))
 				}
 			}
-			result.WriteString(fmt.Sprintf("📄 %s%s\n", file.Path, infoStr))
+
+			// Add line count
+			if file.LineCount > 0 {
+				parts = append(parts, fmt.Sprintf("%dL", file.LineCount))
+			}
+
+			if len(parts) > 0 {
+				infoStr = fmt.Sprintf(" (%s)", strings.Join(parts, ", "))
+			}
 		}
+		result.WriteString(fmt.Sprintf("%s%s\n", file.Path, infoStr))
 	}
 
 	if len(files) == limit {

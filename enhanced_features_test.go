@@ -148,14 +148,9 @@ func TestCharacterCountListFiles(t *testing.T) {
 	}
 
 	for _, file := range files {
-		if !file.IsDir {
-			if expected, exists := testFiles[file.Name]; exists {
-				if file.CharCount != expected.expectedChars {
-					t.Errorf("File %s: expected %d chars, got %d", file.Name, expected.expectedChars, file.CharCount)
-				}
-				if file.LineCount != expected.expectedLines {
-					t.Errorf("File %s: expected %d lines, got %d", file.Name, expected.expectedLines, file.LineCount)
-				}
+		if expected, exists := testFiles[file.Name]; exists {
+			if file.LineCount != expected.expectedLines {
+				t.Errorf("File %s: expected %d lines, got %d", file.Name, expected.expectedLines, file.LineCount)
 			}
 		}
 	}

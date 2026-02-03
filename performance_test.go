@@ -145,10 +145,10 @@ func TestMemoryUsage(t *testing.T) {
 		}
 
 		elapsed := time.Since(start)
-		t.Logf("Got repository info for %d commits in %v", info.CommitCount, elapsed)
+		t.Logf("Got repository info in %v", elapsed)
 
-		if info.CommitCount <= 3 { // Should have more than initial commits
-			t.Errorf("Expected more commits, got %d", info.CommitCount)
+		if info.Path == "" {
+			t.Errorf("Expected path to be set")
 		}
 
 		if elapsed > 5*time.Second {
@@ -211,8 +211,8 @@ func TestConcurrentOperations(t *testing.T) {
 					errors <- fmt.Errorf("goroutine %d failed: %v", id, err)
 					return
 				}
-				if info.CommitCount <= 0 {
-					errors <- fmt.Errorf("goroutine %d got invalid commit count", id)
+				if info.Path == "" {
+					errors <- fmt.Errorf("goroutine %d got empty path", id)
 					return
 				}
 				done <- true

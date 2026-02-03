@@ -57,7 +57,8 @@ This is a Go-based Model Context Protocol (MCP) server that provides Git read op
    - Direct Git command execution via `os/exec`
    - Core Git read operations: info, pull, branch listing, enhanced file listing, content reading
    - Pattern-based file filtering with glob support
-   - Character and line counting for text files
+   - File statistics: extension breakdown, file/directory counts
+   - Line counting for text files (bytes shown for size)
    - Multiple file content retrieval with individual error handling
    - Automatic repository name extraction from Git URLs
    - README file discovery with recursive search support
@@ -114,8 +115,9 @@ Tools use consistent parameter naming:
 - The `shouldSkipDirectory()` function handles directory-level pattern matching
 
 **File Information Enhancement:**
-- Character count and line count for text files
-- File size with human-readable formatting (bytes/KB/MB)
+- `list_files` shows files only (no directory entries)
+- File size with human-readable formatting (B/KB/MB)
+- Line count for text files
 - Modification timestamps
 
 **Multiple File Content:**
@@ -151,6 +153,14 @@ Execute operations on multiple repositories in a single call:
 - `batch_clone`: Clone multiple repositories at once
 - `batch_pull`: Pull all (or specified) repositories
 - `batch_status`: Get status of all (or specified) repositories
+
+### Repository Info Output
+
+`get_repository_info` returns a concise overview without commit count (to avoid bias):
+- Branch name, last update, remote URL, license
+- File statistics: total file count, directory count, extension breakdown (top 10)
+- README content (always shown if available)
+- Optional: associated memos with `include_memos=true`
 
 ### Composite Tools
 
