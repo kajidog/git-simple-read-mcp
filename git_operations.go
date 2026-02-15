@@ -954,8 +954,17 @@ func findAndReadReadme(repoPath string) (string, error) {
 	for _, filename := range readmeFiles {
 		path := filepath.Join(repoPath, filename)
 		if _, err := os.Stat(path); err == nil {
-			content, err := GetFileContent(repoPath, filename, 50) // Limit to 50 lines
+			// Count total lines in the README
+			fullPath := filepath.Join(repoPath, filename)
+			_, totalLines := countFileCharacters(fullPath)
+
+			// Get content (no limit to show full README)
+			content, err := GetFileContent(repoPath, filename, 0) // 0 = no limit
 			if err == nil {
+				// If README is very long, add a note about total lines
+				if totalLines > 100 {
+					content += fmt.Sprintf("\n[README: %d lines total]\n", totalLines)
+				}
 				return content, nil
 			}
 		}
