@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -875,18 +874,6 @@ func isGitRepository(path string) bool {
 	return false
 }
 
-func getCommitCount(repoPath string) (int, error) {
-	cmd := exec.Command("git", "rev-list", "--all", "--count")
-	cmd.Dir = repoPath
-	output, err := cmd.Output()
-	if err != nil {
-		return 0, err
-	}
-
-	count, err := strconv.Atoi(strings.TrimSpace(string(output)))
-	return count, err
-}
-
 func getLastCommit(repoPath string) (time.Time, error) {
 	cmd := exec.Command("git", "log", "-1", "--format=%ci")
 	cmd.Dir = repoPath
@@ -956,77 +943,6 @@ func findAndReadReadme(repoPath string) (string, error) {
 	}
 
 	return "", fmt.Errorf("no readme file found")
-}
-
-func filterResultsByKeywords(repoPath string, results []SearchResult, keywords []string) []SearchResult {
-	var filtered []SearchResult
-
-	for _, result := range results {
-		content, err := GetFileContent(repoPath, result.Path, 0)
-		if err != nil {
-			continue
-		}
-
-		contentLower := strings.ToLower(content)
-		allMatch := true
-
-		for _, keyword := range keywords {
-			if !strings.Contains(contentLower, strings.ToLower(keyword)) {
-				allMatch = false
-				break
-			}
-		}
-
-		if allMatch {
-			filtered = append(filtered, result)
-		}
-	}
-
-	return filtered
-}
-
-// mergeResultsWithOR searches for files containing any of the additional keywords (OR logic)
-func mergeResultsWithOR(repoPath string, existingResults []SearchResult, keywords []string) []SearchResult {
-	// Create a map to avoid duplicates
-	resultMap := make(map[string]SearchResult)
-
-	// Add existing results
-	for _, result := range existingResults {
-		resultMap[result.Path] = result
-	}
-
-	// Search for each additional keyword separately
-	for _, keyword := range keywords {
-		args := []string{"grep", "-l", "-r", "--exclude-dir=.git", keyword}
-		cmd := exec.Command("git", args...)
-		cmd.Dir = repoPath
-		output, err := cmd.Output()
-
-		if err != nil {
-			// No matches found is not an error for OR logic
-			if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
-				continue
-			}
-			// Continue with other keywords even if one fails
-			continue
-		}
-
-		scanner := bufio.NewScanner(strings.NewReader(string(output)))
-		for scanner.Scan() {
-			line := strings.TrimSpace(scanner.Text())
-			if line != "" {
-				resultMap[line] = SearchResult{Path: line}
-			}
-		}
-	}
-
-	// Convert map back to slice
-	var results []SearchResult
-	for _, result := range resultMap {
-		results = append(results, result)
-	}
-
-	return results
 }
 
 // File pattern matching helper functions
