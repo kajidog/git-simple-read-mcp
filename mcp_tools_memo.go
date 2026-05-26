@@ -46,34 +46,35 @@ type ListMemosParams struct {
 // RegisterMemoTools registers all memo-related MCP tools
 func RegisterMemoTools(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "add_memo",
-		Description: "Add memo with title, content, optional repo/tags",
+		Name: "add_memo",
+		Description: "Create a persistent memo. title is required; repository (optional) associates " +
+			"the memo with a workspace repo so it shows up in get_repository_info. " +
+			"Returns the generated UUID, which other memo tools use to address it.",
 	}, handleAddMemo)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_memo",
-		Description: "Get memo by ID",
+		Description: "Read one memo by ID. Use list_memos to discover IDs.",
 	}, handleGetMemo)
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "update_memo",
-		Description: "Update memo by ID",
+		Name: "update_memo",
+		Description: "Modify an existing memo by ID. Only non-empty fields are applied; " +
+			"omitted fields are left unchanged. UpdatedAt is refreshed automatically.",
 	}, handleUpdateMemo)
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "delete_memo",
-		Description: "Delete memo by ID",
+		Name: "delete_memo",
+		Description: "Delete one memo by ID. Destructive: there is no undo. " +
+			"Use list_memos to confirm the ID first.",
 	}, handleDeleteMemo)
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "list_memos",
-		Description: "List/search memos. Filter by repo, query, tags.",
+		Name: "list_memos",
+		Description: "Search and list memos. query searches title and content (case-insensitive); " +
+			"repository filters to one repo; tags filters by tag (any match). " +
+			"limit caps results (default 50).",
 	}, handleListMemos)
-
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "delete_all_memos",
-		Description: "Delete all memos (caution)",
-	}, handleDeleteAllMemos)
 }
 
 func handleAddMemo(ctx context.Context, req *mcp.CallToolRequest, args AddMemoParams) (*mcp.CallToolResult, any, error) {
@@ -268,25 +269,3 @@ func handleListMemos(ctx context.Context, req *mcp.CallToolRequest, args ListMem
 	}, nil, nil
 }
 
-func handleDeleteAllMemos(ctx context.Context, req *mcp.CallToolRequest, args any) (*mcp.CallToolResult, any, error) {
-	store := GetMemoStore()
-	if store == nil {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: "Error: memo store not initialized"}},
-			IsError: true,
-		}, nil, nil
-	}
-
-	count := store.Count()
-	if err := store.DeleteAllMemos(); err != nil {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Failed to delete all memos: %v", err)}},
-			IsError: true,
-		}, nil, nil
-	}
-
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("All memos deleted successfully (%d memos removed)", count)}},
-		IsError: false,
-	}, nil, nil
-}

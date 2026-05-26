@@ -59,11 +59,10 @@ type ListFilesParams struct {
 // GetFileContentParams parameters for get_file_content tool
 type GetFileContentParams struct {
 	Repository string   `json:"repository"`
-	FilePath   string   `json:"file_path,omitempty"`  // Single file path (for backward compatibility)
+	FilePath   string   `json:"file_path,omitempty"`  // Single file path
 	FilePaths  []string `json:"file_paths,omitempty"` // Multiple file paths
-	StartLine  int      `json:"start_line,omitempty"` // Start reading from this line (1-based, default: 1)
-	EndLine    int      `json:"end_line,omitempty"`   // End line (inclusive, default: start_line + 100)
-	MaxLines   int      `json:"max_lines,omitempty"`  // Deprecated: use end_line instead
+	StartLine  int      `json:"start_line,omitempty"` // First line to read, 1-based (default: 1)
+	EndLine    int      `json:"end_line,omitempty"`   // Last line to read, inclusive (default: start_line + 99)
 }
 
 // CloneRepositoryParams parameters for clone_repository tool
@@ -74,11 +73,11 @@ type CloneRepositoryParams struct {
 	IncludeBranches bool   `json:"include_branches,omitempty"` // Include branch list after clone
 }
 
-// ListWorkspaceRepositoriesParams parameters for list_workspace_repositories tool
+// ListWorkspaceRepositoriesParams parameters for list_repositories tool
 type ListWorkspaceRepositoriesParams struct {
 	IncludeStatus  bool `json:"include_status,omitempty"`  // Include git status for each repo
 	IncludeCommits bool `json:"include_commits,omitempty"` // Include recent commits for each repo
-	CommitLimit    int  `json:"commit_limit,omitempty"`    // Number of commits to include (default: 5)
+	CommitLimit    int  `json:"commit_limit,omitempty"`    // Number of commits to include per repo when include_commits is set (default: 5)
 }
 
 // RemoveRepositoryParams parameters for remove_repository tool
@@ -106,14 +105,14 @@ type GetCommitDiffParams struct {
 
 // SessionParams parameters for session tool (unified set/get/clear)
 type SessionParams struct {
-	Action                 string   `json:"action"`                            // "set", "get", or "clear"
-	DefaultRepository      string   `json:"default_repository,omitempty"`      // for "set"
-	DefaultIncludePatterns []string `json:"default_include_patterns,omitempty"` // for "set"
-	DefaultExcludePatterns []string `json:"default_exclude_patterns,omitempty"` // for "set"
-	DefaultSearchLimit     int      `json:"default_search_limit,omitempty"`     // for "set"
-	DefaultListFilesLimit  int      `json:"default_list_files_limit,omitempty"` // for "set"
-	DefaultMaxLines        int      `json:"default_max_lines,omitempty"`        // for "set"
-	DefaultCommitLimit     int      `json:"default_commit_limit,omitempty"`     // for "set"
+	Action                 string   `json:"action"`                              // "set", "get", or "clear"
+	DefaultRepository      string   `json:"default_repository,omitempty"`        // for "set"
+	DefaultIncludePatterns []string `json:"default_include_patterns,omitempty"`  // for "set"
+	DefaultExcludePatterns []string `json:"default_exclude_patterns,omitempty"`  // for "set"
+	DefaultSearchLimit     int      `json:"default_search_limit,omitempty"`      // for "set": cap on search_files results
+	DefaultListFilesLimit  int      `json:"default_list_files_limit,omitempty"`  // for "set": cap on list_files results
+	DefaultLineLimit       int      `json:"default_line_limit,omitempty"`        // for "set": default span for get_file_content
+	DefaultCommitLimit     int      `json:"default_commit_limit,omitempty"`      // for "set": cap on list_commits results
 }
 
 // BatchParams parameters for batch tool (unified clone/pull/status)
@@ -156,78 +155,110 @@ type RepoSearchResult struct {
 // RegisterGitTools registers all Git-related MCP tools
 func RegisterGitTools(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "get_repository_info",
-		Description: "Get repo info. Can include files, READMEs, memos via flags.",
+		Name: "get_repository_info",
+		Description: "Summarize a workspace repo: current branch, last update, remote URL, license, " +
+			"file/dir counts, top file extensions, and README content. " +
+			"Set include_memos=true to also list associated memos (memo_limit caps the count). " +
+			"Use this first when exploring an unfamiliar repo.",
 	}, handleGetRepositoryInfo)
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "pull_repository",
-		Description: "Git pull on repository",
+		Name: "pull_repository",
+		Description: "Run git pull on a workspace repo. Use after clone_repository when the remote " +
+			"has new commits. Returns the git output verbatim.",
 	}, handlePullRepository)
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "list_branches",
-		Description: "List branches in repository",
+		Name: "list_branches",
+		Description: "List local and remote-tracking branches of a workspace repo. " +
+			"Use before switch_branch to discover available targets.",
 	}, handleListBranches)
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "switch_branch",
-		Description: "Switch to branch",
+		Name: "switch_branch",
+		Description: "Check out a branch in a workspace repo. The branch must already exist " +
+			"(use list_branches to verify). This is a read-only inspection switch; do not use to " +
+			"create branches.",
 	}, handleSwitchBranch)
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "search_files",
-		Description: "Search files by keywords. Cross-repo via repositories array.",
+		Name: "search_files",
+		Description: "Search file contents (and optionally filenames) by keywords across one or more " +
+			"workspace repos. Set repositories=[...] for cross-repo search, or repository=name for one. " +
+			"search_mode=\"and\"|\"or\" (default and); context_lines>0 includes surrounding lines; " +
+			"include_patterns/exclude_patterns filter by glob (\"*.go\", \"vendor/**\").",
 	}, handleSearchFiles)
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "list_files",
-		Description: "List files in directory with pattern filtering",
+		Name: "list_files",
+		Description: "List files in a workspace repo with size, line count, and modification time. " +
+			"directory=\"subdir\" scopes the listing; recursive=true descends. " +
+			"include_patterns/exclude_patterns filter by glob (directory excludes like \"vendor/\" " +
+			"prune entire subtrees).",
 	}, handleListFiles)
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "get_file_content",
-		Description: "Get file content with line range support",
+		Name: "get_file_content",
+		Description: "Read one file (file_path) or several files (file_paths) from a workspace repo. " +
+			"Line numbers are always emitted. start_line is 1-based; end_line is inclusive (defaults " +
+			"to start_line + line_limit - 1, where line_limit comes from the session default, " +
+			"falling back to 100).",
 	}, handleGetFileContent)
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "clone_repository",
-		Description: "Clone repo. Can include info and branches.",
+		Name: "clone_repository",
+		Description: "Clone a Git repository into the workspace. The name is derived from the URL " +
+			"if omitted. If the repo already exists, runs git pull instead. " +
+			"include_info=true to attach get_repository_info output; include_branches=true to attach " +
+			"the branch list.",
 	}, handleCloneRepository)
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "list_repositories",
-		Description: "List workspace repos with optional status/commits",
+		Name: "list_repositories",
+		Description: "List all repositories in the workspace. include_status=true adds git status " +
+			"(branch, dirty flag) per repo; include_commits=true adds recent commits per repo, " +
+			"capped at commit_limit (default 5).",
 	}, handleListWorkspaceRepositories)
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "remove_repository",
-		Description: "Remove repository from workspace",
+		Name: "remove_repository",
+		Description: "Delete a workspace repo from disk. Destructive: there is no undo. The on-disk " +
+			"clone is removed, but associated memos are preserved.",
 	}, handleRemoveRepository)
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "get_readme_files",
-		Description: "Find README files in repository",
+		Name: "get_readme_files",
+		Description: "Find README files in a workspace repo. By default checks the repo root only; " +
+			"recursive=true scans all subdirectories. Matches README, README.md, readme.rst, etc.",
 	}, handleGetReadmeFiles)
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "list_commits",
-		Description: "List commit history",
+		Name: "list_commits",
+		Description: "List the most recent commits on the current branch of a workspace repo. " +
+			"limit caps the number returned (default 20).",
 	}, handleListCommits)
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "get_commit_diff",
-		Description: "Get diff for a commit",
+		Name: "get_commit_diff",
+		Description: "Show the diff for a single commit in a workspace repo. commit_hash accepts the " +
+			"full SHA or any prefix git recognizes. Pair with list_commits to discover hashes.",
 	}, handleGetCommitDiff)
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "session",
-		Description: "Session config: action=set/get/clear. Set defaults for repo, patterns, limits.",
+		Name: "session",
+		Description: "Manage server-side session defaults to reduce per-call parameter repetition. " +
+			"action=\"set\" stores defaults (default_repository, default_include_patterns, " +
+			"default_exclude_patterns, default_search_limit, default_list_files_limit, " +
+			"default_line_limit, default_commit_limit); action=\"get\" returns the current state; " +
+			"action=\"clear\" resets everything.",
 	}, handleSession)
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "batch",
-		Description: "Batch ops: operation=clone/pull/status on multiple repos",
+		Name: "batch",
+		Description: "Run the same operation across multiple repos in one call. " +
+			"operation=\"clone\" with urls=[...] clones each URL; \"pull\" updates listed repos " +
+			"(or all workspace repos when repositories is empty); \"status\" reports current branch " +
+			"and dirty flag.",
 	}, handleBatch)
 }
 
@@ -535,7 +566,8 @@ func handleGetFileContent(ctx context.Context, req *mcp.CallToolRequest, args Ge
 		startLine = 1
 	}
 
-	// Calculate maxLines: end_line > max_lines > session default > 100
+	// Resolve the line span. Explicit end_line wins; otherwise fall back to
+	// the session-configured default span (100 lines by default).
 	var maxLines int
 	if args.EndLine > 0 {
 		if args.EndLine < startLine {
@@ -546,8 +578,7 @@ func handleGetFileContent(ctx context.Context, req *mcp.CallToolRequest, args Ge
 		}
 		maxLines = args.EndLine - startLine + 1
 	} else {
-		// Use session config default (falls back to 100 if not set)
-		maxLines = GetSessionConfig().GetMaxLines(args.MaxLines)
+		maxLines = GetSessionConfig().GetLineLimit(0)
 	}
 
 	showLineNumbers := true
@@ -1093,7 +1124,7 @@ func handleSession(ctx context.Context, req *mcp.CallToolRequest, args SessionPa
 			DefaultExcludePatterns: args.DefaultExcludePatterns,
 			DefaultSearchLimit:     args.DefaultSearchLimit,
 			DefaultListFilesLimit:  args.DefaultListFilesLimit,
-			DefaultMaxLines:        args.DefaultMaxLines,
+			DefaultLineLimit:       args.DefaultLineLimit,
 			DefaultCommitLimit:     args.DefaultCommitLimit,
 		}
 		SetSessionConfigValues(config)
@@ -1116,8 +1147,8 @@ func handleSession(ctx context.Context, req *mcp.CallToolRequest, args SessionPa
 		if args.DefaultListFilesLimit > 0 {
 			result.WriteString(fmt.Sprintf("default_list_files_limit: %d\n", args.DefaultListFilesLimit))
 		}
-		if args.DefaultMaxLines > 0 {
-			result.WriteString(fmt.Sprintf("default_max_lines: %d\n", args.DefaultMaxLines))
+		if args.DefaultLineLimit > 0 {
+			result.WriteString(fmt.Sprintf("default_line_limit: %d\n", args.DefaultLineLimit))
 		}
 		if args.DefaultCommitLimit > 0 {
 			result.WriteString(fmt.Sprintf("default_commit_limit: %d\n", args.DefaultCommitLimit))
@@ -1130,7 +1161,7 @@ func handleSession(ctx context.Context, req *mcp.CallToolRequest, args SessionPa
 		sc := GetSessionConfig()
 		if sc.IsEmpty() {
 			return &mcp.CallToolResult{
-				Content: []mcp.Content{&mcp.TextContent{Text: "No session configuration set.\nUse action='set' with: default_repository, default_include_patterns, default_exclude_patterns, default_search_limit, default_list_files_limit, default_max_lines, default_commit_limit"}},
+				Content: []mcp.Content{&mcp.TextContent{Text: "No session configuration set.\nUse action='set' with: default_repository, default_include_patterns, default_exclude_patterns, default_search_limit, default_list_files_limit, default_line_limit, default_commit_limit"}},
 			}, nil, nil
 		}
 		var result strings.Builder
