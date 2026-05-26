@@ -21,16 +21,25 @@ func NewWorkspaceManager(workspaceDir string) (*WorkspaceManager, error) {
 	// Convert to absolute path
 	absPath, err := filepath.Abs(workspaceDir)
 	if err != nil {
-		return nil, fmt.Errorf("invalid workspace path: %v", err)
+		return nil, fmt.Errorf("invalid workspace path: %w", err)
 	}
 
 	// Create workspace directory if it doesn't exist
 	if err := os.MkdirAll(absPath, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create workspace directory: %v", err)
+		return nil, fmt.Errorf("failed to create workspace directory: %w", err)
+	}
+
+	// Resolve symlinks so all later comparisons happen against the real path.
+	// This is required to prevent symlink-based path traversal: without this,
+	// a symlink inside the workspace pointing outside would satisfy the prefix
+	// check but resolve to an external location at the OS level.
+	resolved, err := filepath.EvalSymlinks(absPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve workspace symlinks: %w", err)
 	}
 
 	return &WorkspaceManager{
-		workspaceDir: absPath,
+		workspaceDir: resolved,
 	}, nil
 }
 
@@ -40,7 +49,13 @@ func (wm *WorkspaceManager) GetWorkspaceDir() string {
 }
 
 // ValidateRepositoryPath validates that the given path is within the workspace
-// and converts relative paths to absolute paths within the workspace
+// and converts relative paths to absolute paths within the workspace.
+//
+// Symlinks are resolved before the containment check so that a symlink inside
+// the workspace pointing outside (e.g. workspace/evil -> /etc) cannot be used
+// to escape the workspace. For paths that do not yet exist (e.g. a clone
+// target), the closest existing ancestor is resolved and the remaining
+// components are appended.
 func (wm *WorkspaceManager) ValidateRepositoryPath(path string) (string, error) {
 	if path == "" {
 		return "", fmt.Errorf("repository path cannot be empty")
@@ -58,15 +73,54 @@ func (wm *WorkspaceManager) ValidateRepositoryPath(path string) (string, error) 
 	// Convert to absolute path
 	absPath, err := filepath.Abs(fullPath)
 	if err != nil {
-		return "", fmt.Errorf("invalid repository path: %v", err)
+		return "", fmt.Errorf("invalid repository path: %w", err)
 	}
 
-	// Check if the path is within workspace
-	if !wm.isWithinWorkspace(absPath) {
+	// Resolve symlinks. The path may not exist yet (clone target etc.), so we
+	// walk up to the closest existing ancestor, resolve that, and re-attach
+	// the missing tail.
+	resolved, err := resolveSymlinksAllowMissing(absPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve path symlinks: %w", err)
+	}
+
+	// Check if the resolved path is within workspace
+	if !wm.isWithinWorkspace(resolved) {
 		return "", fmt.Errorf("repository path must be within workspace directory: %s", wm.workspaceDir)
 	}
 
-	return absPath, nil
+	return resolved, nil
+}
+
+// resolveSymlinksAllowMissing resolves symlinks on path. If the leaf or
+// intermediate components do not exist, the closest existing ancestor is
+// resolved and the remaining components are appended.
+func resolveSymlinksAllowMissing(path string) (string, error) {
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		return resolved, nil
+	} else if !os.IsNotExist(err) {
+		return "", err
+	}
+
+	// Walk up to find the closest existing ancestor.
+	dir := path
+	tail := ""
+	for {
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			// Reached the root without finding an existing ancestor.
+			return path, nil
+		}
+		tail = filepath.Join(filepath.Base(dir), tail)
+		dir = parent
+		resolved, err := filepath.EvalSymlinks(dir)
+		if err == nil {
+			return filepath.Join(resolved, tail), nil
+		}
+		if !os.IsNotExist(err) {
+			return "", err
+		}
+	}
 }
 
 // GetRepositoryName extracts the repository name from a repository path within workspace
@@ -79,7 +133,7 @@ func (wm *WorkspaceManager) GetRepositoryName(repoPath string) (string, error) {
 	// Get relative path from workspace
 	relPath, err := filepath.Rel(wm.workspaceDir, validPath)
 	if err != nil {
-		return "", fmt.Errorf("failed to get relative path: %v", err)
+		return "", fmt.Errorf("failed to get relative path: %w", err)
 	}
 
 	// Return the first directory component as repository name
@@ -100,7 +154,7 @@ func (wm *WorkspaceManager) GetRepositoryPath(repoName string) string {
 func (wm *WorkspaceManager) ListRepositories() ([]string, error) {
 	entries, err := os.ReadDir(wm.workspaceDir)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read workspace directory: %v", err)
+		return nil, fmt.Errorf("failed to read workspace directory: %w", err)
 	}
 
 	var repositories []string
@@ -130,7 +184,7 @@ func (wm *WorkspaceManager) RemoveRepository(repoName string) error {
 
 	repoPath := wm.GetRepositoryPath(repoName)
 	if err := os.RemoveAll(repoPath); err != nil {
-		return fmt.Errorf("failed to remove repository: %v", err)
+		return fmt.Errorf("failed to remove repository: %w", err)
 	}
 
 	return nil
