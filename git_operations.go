@@ -135,7 +135,7 @@ func GetRepositoryStatus(repoPath string) (*RepositoryStatus, error) {
 	cmd.Dir = repoPath
 	output, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get git status: %v", err)
+		return nil, fmt.Errorf("failed to get git status: %w", err)
 	}
 
 	statusOutput := strings.TrimSpace(string(output))
@@ -162,7 +162,7 @@ func PullRepository(repoPath string) (string, error) {
 	cmd.Dir = repoPath
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return string(output), fmt.Errorf("git pull failed: %v", err)
+		return string(output), fmt.Errorf("git pull failed: %w", err)
 	}
 
 	return string(output), nil
@@ -189,7 +189,7 @@ func ListCommits(repoPath string, limit int) ([]Commit, error) {
 	cmd.Dir = repoPath
 	output, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("failed to list commits: %v", err)
+		return nil, fmt.Errorf("failed to list commits: %w", err)
 	}
 
 	var commits []Commit
@@ -232,7 +232,7 @@ func GetCommitDiff(repoPath, commitHash string) (string, error) {
 	cmd.Dir = repoPath
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return string(output), fmt.Errorf("git show failed for commit '%s': %v", commitHash, err)
+		return string(output), fmt.Errorf("git show failed for commit '%s': %w", commitHash, err)
 	}
 
 	return string(output), nil
@@ -255,7 +255,7 @@ func ListBranches(repoPath string) ([]Branch, error) {
 	cmd.Dir = repoPath
 	output, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("failed to list branches: %v", err)
+		return nil, fmt.Errorf("failed to list branches: %w", err)
 	}
 
 	var branches []Branch
@@ -303,7 +303,7 @@ func SwitchBranch(repoPath, branchName string) (string, error) {
 	cmd.Dir = repoPath
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return string(output), fmt.Errorf("failed to switch branch: %v", err)
+		return string(output), fmt.Errorf("failed to switch branch: %w", err)
 	}
 
 	return string(output), nil
@@ -383,12 +383,12 @@ func ListFiles(repoPath, dirPath string, recursive bool, includePatterns, exclud
 		})
 
 		if err != nil && err.Error() != "max results reached" {
-			return nil, fmt.Errorf("failed to walk directory: %v", err)
+			return nil, fmt.Errorf("failed to walk directory: %w", err)
 		}
 	} else {
 		entries, err := os.ReadDir(fullPath)
 		if err != nil {
-			return nil, fmt.Errorf("failed to read directory: %v", err)
+			return nil, fmt.Errorf("failed to read directory: %w", err)
 		}
 
 		for _, entry := range entries {
@@ -436,7 +436,7 @@ func ListFiles(repoPath, dirPath string, recursive bool, includePatterns, exclud
 func CloneRepository(repoURL, repoName string) (string, string, error) {
 	wm := GetWorkspaceManager()
 	if wm == nil {
-		return "", "", fmt.Errorf("workspace not initialized")
+		return "", "", ErrWorkspaceNotInitialized
 	}
 
 	// Extract repository name from URL if not provided
@@ -444,7 +444,7 @@ func CloneRepository(repoURL, repoName string) (string, string, error) {
 		var err error
 		repoName, err = extractRepoNameFromURL(repoURL)
 		if err != nil {
-			return "", "", fmt.Errorf("failed to extract repository name from URL: %v", err)
+			return "", "", fmt.Errorf("failed to extract repository name from URL: %w", err)
 		}
 	}
 
@@ -460,7 +460,7 @@ func CloneRepository(repoURL, repoName string) (string, string, error) {
 	cmd := exec.Command("git", "clone", repoURL, targetPath)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return string(output), repoName, fmt.Errorf("git clone failed: %v", err)
+		return string(output), repoName, fmt.Errorf("git clone failed: %w", err)
 	}
 
 	return string(output), repoName, nil
@@ -596,7 +596,7 @@ func GetFileStatistics(repoPath string, excludePatterns []string) (*FileStatisti
 	})
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to walk directory: %v", err)
+		return nil, fmt.Errorf("failed to walk directory: %w", err)
 	}
 
 	return stats, nil
@@ -615,7 +615,7 @@ func GetFileContent(repoPath, filePath string, maxLines int) (string, error) {
 
 	file, err := os.Open(fullPath)
 	if err != nil {
-		return "", fmt.Errorf("failed to open file: %v", err)
+		return "", fmt.Errorf("failed to open file: %w", err)
 	}
 	defer file.Close()
 
@@ -630,7 +630,7 @@ func GetFileContent(repoPath, filePath string, maxLines int) (string, error) {
 	}
 
 	if err := scanner.Err(); err != nil {
-		return "", fmt.Errorf("failed to read file: %v", err)
+		return "", fmt.Errorf("failed to read file: %w", err)
 	}
 
 	return content.String(), nil
@@ -680,7 +680,7 @@ func GetFileContentWithLineNumbers(repoPath, filePath string, startLine, maxLine
 	// First pass: count total lines
 	file, err := os.Open(fullPath)
 	if err != nil {
-		return "", 0, 0, 0, fmt.Errorf("failed to open file: %v", err)
+		return "", 0, 0, 0, fmt.Errorf("failed to open file: %w", err)
 	}
 
 	totalLines := 0
@@ -691,7 +691,7 @@ func GetFileContentWithLineNumbers(repoPath, filePath string, startLine, maxLine
 	file.Close()
 
 	if err := scanner.Err(); err != nil {
-		return "", 0, 0, 0, fmt.Errorf("failed to count lines: %v", err)
+		return "", 0, 0, 0, fmt.Errorf("failed to count lines: %w", err)
 	}
 
 	// Normalize startLine
@@ -705,7 +705,7 @@ func GetFileContentWithLineNumbers(repoPath, filePath string, startLine, maxLine
 	// Second pass: read content from startLine
 	file, err = os.Open(fullPath)
 	if err != nil {
-		return "", 0, 0, 0, fmt.Errorf("failed to open file: %v", err)
+		return "", 0, 0, 0, fmt.Errorf("failed to open file: %w", err)
 	}
 	defer file.Close()
 
@@ -732,7 +732,7 @@ func GetFileContentWithLineNumbers(repoPath, filePath string, startLine, maxLine
 	}
 
 	if err := scanner.Err(); err != nil {
-		return "", 0, 0, 0, fmt.Errorf("failed to read file: %v", err)
+		return "", 0, 0, 0, fmt.Errorf("failed to read file: %w", err)
 	}
 
 	endLine := startLine + linesRead - 1
@@ -837,13 +837,13 @@ func GetReadmeFiles(repoPath string, recursive bool) ([]ReadmeFileInfo, error) {
 		})
 
 		if err != nil {
-			return nil, fmt.Errorf("failed to walk directory: %v", err)
+			return nil, fmt.Errorf("failed to walk directory: %w", err)
 		}
 	} else {
 		// Only search in root directory
 		entries, err := os.ReadDir(repoPath)
 		if err != nil {
-			return nil, fmt.Errorf("failed to read directory: %v", err)
+			return nil, fmt.Errorf("failed to read directory: %w", err)
 		}
 
 		for _, entry := range entries {

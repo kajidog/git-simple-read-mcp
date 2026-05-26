@@ -128,7 +128,7 @@ func searchInFilenames(repoPath string, keywords []string, searchMode string, in
 	output, err := cmd.Output()
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to list files: %v", err)
+		return nil, fmt.Errorf("failed to list files: %w", err)
 	}
 
 	var results []SearchResult

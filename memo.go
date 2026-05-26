@@ -176,7 +176,7 @@ func (ms *MemoStore) GetMemo(id string) (*Memo, error) {
 
 	memo, exists := ms.memos[id]
 	if !exists {
-		return nil, fmt.Errorf("memo not found: %s", id)
+		return nil, fmt.Errorf("%w: %s", ErrMemoNotFound, id)
 	}
 
 	return memo, nil
@@ -189,7 +189,7 @@ func (ms *MemoStore) UpdateMemo(id, repository, title, content string, tags []st
 
 	memo, exists := ms.memos[id]
 	if !exists {
-		return nil, fmt.Errorf("memo not found: %s", id)
+		return nil, fmt.Errorf("%w: %s", ErrMemoNotFound, id)
 	}
 
 	if repository != "" {
@@ -219,7 +219,7 @@ func (ms *MemoStore) DeleteMemo(id string) error {
 	defer ms.mu.Unlock()
 
 	if _, exists := ms.memos[id]; !exists {
-		return fmt.Errorf("memo not found: %s", id)
+		return fmt.Errorf("%w: %s", ErrMemoNotFound, id)
 	}
 
 	delete(ms.memos, id)

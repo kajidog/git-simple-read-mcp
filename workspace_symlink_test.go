@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -29,8 +30,8 @@ func TestSymlinkEscapeRejection(t *testing.T) {
 
 	if _, err := wm.ValidateRepositoryPath("escape"); err == nil {
 		t.Fatal("expected ValidateRepositoryPath to reject symlink escape, but it succeeded")
-	} else if !strings.Contains(err.Error(), "within workspace") {
-		t.Fatalf("expected workspace containment error, got: %v", err)
+	} else if !errors.Is(err, ErrPathOutsideWorkspace) {
+		t.Fatalf("expected ErrPathOutsideWorkspace, got: %v", err)
 	}
 
 	if _, err := wm.ValidateRepositoryPath("escape/secret.txt"); err == nil {

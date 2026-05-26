@@ -86,7 +86,7 @@ func (wm *WorkspaceManager) ValidateRepositoryPath(path string) (string, error) 
 
 	// Check if the resolved path is within workspace
 	if !wm.isWithinWorkspace(resolved) {
-		return "", fmt.Errorf("repository path must be within workspace directory: %s", wm.workspaceDir)
+		return "", fmt.Errorf("%w: %s (workspace: %s)", ErrPathOutsideWorkspace, resolved, wm.workspaceDir)
 	}
 
 	return resolved, nil
@@ -179,7 +179,7 @@ func (wm *WorkspaceManager) RepositoryExists(repoName string) bool {
 // RemoveRepository removes a repository from the workspace
 func (wm *WorkspaceManager) RemoveRepository(repoName string) error {
 	if !wm.RepositoryExists(repoName) {
-		return fmt.Errorf("repository '%s' does not exist", repoName)
+		return fmt.Errorf("%w: %s", ErrRepositoryNotFound, repoName)
 	}
 
 	repoPath := wm.GetRepositoryPath(repoName)
@@ -231,7 +231,7 @@ func GetWorkspaceManager() *WorkspaceManager {
 // ValidateWorkspacePath validates a path using the global workspace manager
 func ValidateWorkspacePath(path string) (string, error) {
 	if globalWorkspaceManager == nil {
-		return "", fmt.Errorf("workspace not initialized")
+		return "", ErrWorkspaceNotInitialized
 	}
 	return globalWorkspaceManager.ValidateRepositoryPath(path)
 }
