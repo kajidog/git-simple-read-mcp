@@ -275,39 +275,7 @@ func handleGetRepositoryInfo(ctx context.Context, req *mcp.CallToolRequest, args
 		// Sort extensions by count and show top ones
 		if len(stats.ExtensionCounts) > 0 {
 			result.WriteString("Extensions: ")
-			type extCount struct {
-				ext   string
-				count int
-			}
-			var sorted []extCount
-			for ext, count := range stats.ExtensionCounts {
-				sorted = append(sorted, extCount{ext, count})
-			}
-			// Sort by count descending
-			for i := 0; i < len(sorted)-1; i++ {
-				for j := i + 1; j < len(sorted); j++ {
-					if sorted[j].count > sorted[i].count {
-						sorted[i], sorted[j] = sorted[j], sorted[i]
-					}
-				}
-			}
-			// Show top 10
-			shown := 0
-			others := 0
-			for _, ec := range sorted {
-				if shown < 10 {
-					if shown > 0 {
-						result.WriteString(", ")
-					}
-					result.WriteString(fmt.Sprintf("%s(%d)", ec.ext, ec.count))
-					shown++
-				} else {
-					others += ec.count
-				}
-			}
-			if others > 0 {
-				result.WriteString(fmt.Sprintf(", others(%d)", others))
-			}
+			result.WriteString(formatExtensionStats(stats.ExtensionCounts, 10))
 			result.WriteString("\n")
 		}
 	}
