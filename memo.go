@@ -48,7 +48,7 @@ func InitializeMemoStore(workspaceDir string) error {
 	if err := store.load(); err != nil {
 		// If file doesn't exist, that's okay - we'll create it on first save
 		if !os.IsNotExist(err) {
-			return fmt.Errorf("failed to load memos: %v", err)
+			return fmt.Errorf("failed to load memos: %w", err)
 		}
 	}
 
@@ -70,7 +70,7 @@ func (ms *MemoStore) load() error {
 
 	var memos []*Memo
 	if err := json.Unmarshal(data, &memos); err != nil {
-		return fmt.Errorf("failed to unmarshal memos: %v", err)
+		return fmt.Errorf("failed to unmarshal memos: %w", err)
 	}
 
 	ms.mu.Lock()
@@ -84,7 +84,12 @@ func (ms *MemoStore) load() error {
 	return nil
 }
 
-// saveUnlocked writes memos to the JSON file (assumes lock is already held)
+// saveUnlocked writes memos to the JSON file (assumes lock is already held).
+//
+// The write is performed atomically by writing to a temporary file in the
+// same directory and renaming it over the destination. This prevents partial
+// writes and corruption if the process is killed mid-save: readers will see
+// either the old file or the new file, never a truncated mix.
 func (ms *MemoStore) saveUnlocked() error {
 	memos := make([]*Memo, 0, len(ms.memos))
 	for _, memo := range ms.memos {
@@ -93,21 +98,46 @@ func (ms *MemoStore) saveUnlocked() error {
 
 	data, err := json.MarshalIndent(memos, "", "  ")
 	if err != nil {
-		return fmt.Errorf("failed to marshal memos: %v", err)
+		return fmt.Errorf("failed to marshal memos: %w", err)
 	}
 
-	if err := os.WriteFile(ms.filePath, data, 0644); err != nil {
-		return fmt.Errorf("failed to write memos file: %v", err)
+	dir := filepath.Dir(ms.filePath)
+	tmp, err := os.CreateTemp(dir, ".memos-*.tmp")
+	if err != nil {
+		return fmt.Errorf("failed to create temp memos file: %w", err)
+	}
+	tmpPath := tmp.Name()
+
+	cleanup := func() {
+		_ = os.Remove(tmpPath)
+	}
+
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		cleanup()
+		return fmt.Errorf("failed to write memos data: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		cleanup()
+		return fmt.Errorf("failed to sync memos file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		cleanup()
+		return fmt.Errorf("failed to close memos file: %w", err)
+	}
+
+	if err := os.Chmod(tmpPath, 0644); err != nil {
+		cleanup()
+		return fmt.Errorf("failed to chmod memos file: %w", err)
+	}
+
+	if err := os.Rename(tmpPath, ms.filePath); err != nil {
+		cleanup()
+		return fmt.Errorf("failed to rename memos file: %w", err)
 	}
 
 	return nil
-}
-
-// save writes memos to the JSON file (acquires exclusive lock)
-func (ms *MemoStore) save() error {
-	ms.mu.Lock()
-	defer ms.mu.Unlock()
-	return ms.saveUnlocked()
 }
 
 // AddMemo adds a new memo
@@ -127,10 +157,12 @@ func (ms *MemoStore) AddMemo(repository, title, content string, tags []string) (
 	}
 
 	ms.mu.Lock()
+	defer ms.mu.Unlock()
 	ms.memos[memo.ID] = memo
-	ms.mu.Unlock()
 
-	if err := ms.save(); err != nil {
+	if err := ms.saveUnlocked(); err != nil {
+		// Roll back the in-memory insertion so memory and disk stay consistent.
+		delete(ms.memos, memo.ID)
 		return nil, err
 	}
 
@@ -144,7 +176,7 @@ func (ms *MemoStore) GetMemo(id string) (*Memo, error) {
 
 	memo, exists := ms.memos[id]
 	if !exists {
-		return nil, fmt.Errorf("memo not found: %s", id)
+		return nil, fmt.Errorf("%w: %s", ErrMemoNotFound, id)
 	}
 
 	return memo, nil
@@ -157,7 +189,7 @@ func (ms *MemoStore) UpdateMemo(id, repository, title, content string, tags []st
 
 	memo, exists := ms.memos[id]
 	if !exists {
-		return nil, fmt.Errorf("memo not found: %s", id)
+		return nil, fmt.Errorf("%w: %s", ErrMemoNotFound, id)
 	}
 
 	if repository != "" {
@@ -187,7 +219,7 @@ func (ms *MemoStore) DeleteMemo(id string) error {
 	defer ms.mu.Unlock()
 
 	if _, exists := ms.memos[id]; !exists {
-		return fmt.Errorf("memo not found: %s", id)
+		return fmt.Errorf("%w: %s", ErrMemoNotFound, id)
 	}
 
 	delete(ms.memos, id)

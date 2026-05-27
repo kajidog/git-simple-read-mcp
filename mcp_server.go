@@ -32,12 +32,12 @@ Supports both stdio (default) and HTTP transports for maximum compatibility.`,
 			workspace = "./workspace" // Default workspace directory
 		}
 		if err := InitializeWorkspace(workspace); err != nil {
-			return fmt.Errorf("failed to initialize workspace: %v", err)
+			return fmt.Errorf("failed to initialize workspace: %w", err)
 		}
 
 		// Initialize memo store
 		if err := InitializeMemoStore(workspace); err != nil {
-			return fmt.Errorf("failed to initialize memo store: %v", err)
+			return fmt.Errorf("failed to initialize memo store: %w", err)
 		}
 
 		// Create MCP server

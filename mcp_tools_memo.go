@@ -46,51 +46,46 @@ type ListMemosParams struct {
 // RegisterMemoTools registers all memo-related MCP tools
 func RegisterMemoTools(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "add_memo",
-		Description: "Add memo with title, content, optional repo/tags",
+		Name: "add_memo",
+		Description: "Create a persistent memo. title is required; repository (optional) associates " +
+			"the memo with a workspace repo so it shows up in get_repository_info. " +
+			"Returns the generated UUID, which other memo tools use to address it.",
 	}, handleAddMemo)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_memo",
-		Description: "Get memo by ID",
+		Description: "Read one memo by ID. Use list_memos to discover IDs.",
 	}, handleGetMemo)
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "update_memo",
-		Description: "Update memo by ID",
+		Name: "update_memo",
+		Description: "Modify an existing memo by ID. Only non-empty fields are applied; " +
+			"omitted fields are left unchanged. UpdatedAt is refreshed automatically.",
 	}, handleUpdateMemo)
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "delete_memo",
-		Description: "Delete memo by ID",
+		Name: "delete_memo",
+		Description: "Delete one memo by ID. Destructive: there is no undo. " +
+			"Use list_memos to confirm the ID first.",
 	}, handleDeleteMemo)
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "list_memos",
-		Description: "List/search memos. Filter by repo, query, tags.",
+		Name: "list_memos",
+		Description: "Search and list memos. query searches title and content (case-insensitive); " +
+			"repository filters to one repo; tags filters by tag (any match). " +
+			"limit caps results (default 50).",
 	}, handleListMemos)
-
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "delete_all_memos",
-		Description: "Delete all memos (caution)",
-	}, handleDeleteAllMemos)
 }
 
 func handleAddMemo(ctx context.Context, req *mcp.CallToolRequest, args AddMemoParams) (*mcp.CallToolResult, any, error) {
 	store := GetMemoStore()
 	if store == nil {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: "Error: memo store not initialized"}},
-			IsError: true,
-		}, nil, nil
+		return errorResult("Error: memo store not initialized")
 	}
 
 	memo, err := store.AddMemo(args.Repository, args.Title, args.Content, args.Tags)
 	if err != nil {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Failed to add memo: %v", err)}},
-			IsError: true,
-		}, nil, nil
+		return errorResult("Failed to add memo: %v", err)
 	}
 
 	var result strings.Builder
@@ -106,27 +101,18 @@ func handleAddMemo(ctx context.Context, req *mcp.CallToolRequest, args AddMemoPa
 	}
 	result.WriteString(fmt.Sprintf("\nContent:\n%s\n", memo.Content))
 
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{&mcp.TextContent{Text: result.String()}},
-		IsError: false,
-	}, nil, nil
+	return textResult(result.String())
 }
 
 func handleGetMemo(ctx context.Context, req *mcp.CallToolRequest, args GetMemoParams) (*mcp.CallToolResult, any, error) {
 	store := GetMemoStore()
 	if store == nil {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: "Error: memo store not initialized"}},
-			IsError: true,
-		}, nil, nil
+		return errorResult("Error: memo store not initialized")
 	}
 
 	memo, err := store.GetMemo(args.ID)
 	if err != nil {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Failed to get memo: %v", err)}},
-			IsError: true,
-		}, nil, nil
+		return errorResult("Failed to get memo: %v", err)
 	}
 
 	var result strings.Builder
@@ -143,27 +129,18 @@ func handleGetMemo(ctx context.Context, req *mcp.CallToolRequest, args GetMemoPa
 	result.WriteString(fmt.Sprintf("Updated: %s\n", memo.UpdatedAt.Format("2006-01-02 15:04:05")))
 	result.WriteString(fmt.Sprintf("\nContent:\n%s\n", memo.Content))
 
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{&mcp.TextContent{Text: result.String()}},
-		IsError: false,
-	}, nil, nil
+	return textResult(result.String())
 }
 
 func handleUpdateMemo(ctx context.Context, req *mcp.CallToolRequest, args UpdateMemoParams) (*mcp.CallToolResult, any, error) {
 	store := GetMemoStore()
 	if store == nil {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: "Error: memo store not initialized"}},
-			IsError: true,
-		}, nil, nil
+		return errorResult("Error: memo store not initialized")
 	}
 
 	memo, err := store.UpdateMemo(args.ID, args.Repository, args.Title, args.Content, args.Tags)
 	if err != nil {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Failed to update memo: %v", err)}},
-			IsError: true,
-		}, nil, nil
+		return errorResult("Failed to update memo: %v", err)
 	}
 
 	var result strings.Builder
@@ -179,46 +156,31 @@ func handleUpdateMemo(ctx context.Context, req *mcp.CallToolRequest, args Update
 	}
 	result.WriteString(fmt.Sprintf("\nContent:\n%s\n", memo.Content))
 
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{&mcp.TextContent{Text: result.String()}},
-		IsError: false,
-	}, nil, nil
+	return textResult(result.String())
 }
 
 func handleDeleteMemo(ctx context.Context, req *mcp.CallToolRequest, args DeleteMemoParams) (*mcp.CallToolResult, any, error) {
 	store := GetMemoStore()
 	if store == nil {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: "Error: memo store not initialized"}},
-			IsError: true,
-		}, nil, nil
+		return errorResult("Error: memo store not initialized")
 	}
 
 	if err := store.DeleteMemo(args.ID); err != nil {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Failed to delete memo: %v", err)}},
-			IsError: true,
-		}, nil, nil
+		return errorResult("Failed to delete memo: %v", err)
 	}
 
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Memo deleted successfully: %s", args.ID)}},
-		IsError: false,
-	}, nil, nil
+	return textResult(fmt.Sprintf("Memo deleted successfully: %s", args.ID))
 }
 
 func handleListMemos(ctx context.Context, req *mcp.CallToolRequest, args ListMemosParams) (*mcp.CallToolResult, any, error) {
 	store := GetMemoStore()
 	if store == nil {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: "Error: memo store not initialized"}},
-			IsError: true,
-		}, nil, nil
+		return errorResult("Error: memo store not initialized")
 	}
 
 	limit := args.Limit
 	if limit == 0 {
-		limit = 50 // Default limit
+		limit = 50
 	}
 
 	memos := store.SearchMemos(args.Query, args.Repository, args.Tags, limit)
@@ -232,7 +194,6 @@ func handleListMemos(ctx context.Context, req *mcp.CallToolRequest, args ListMem
 	result.WriteString(strings.Repeat("=", 50) + "\n\n")
 
 	for i, memo := range memos {
-		// Show full ID for AI usability (was truncated to 8 chars before)
 		result.WriteString(fmt.Sprintf("%d. %s\n", i+1, memo.Title))
 		result.WriteString(fmt.Sprintf("   ID: %s\n", memo.ID))
 		if memo.Repository != "" {
@@ -245,7 +206,6 @@ func handleListMemos(ctx context.Context, req *mcp.CallToolRequest, args ListMem
 			memo.CreatedAt.Format("2006-01-02 15:04"),
 			memo.UpdatedAt.Format("2006-01-02 15:04")))
 
-		// Show content preview (first 100 characters)
 		contentPreview := memo.Content
 		if len(contentPreview) > 100 {
 			contentPreview = contentPreview[:100] + "..."
@@ -262,31 +222,5 @@ func handleListMemos(ctx context.Context, req *mcp.CallToolRequest, args ListMem
 		result.WriteString(".\n")
 	}
 
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{&mcp.TextContent{Text: result.String()}},
-		IsError: false,
-	}, nil, nil
-}
-
-func handleDeleteAllMemos(ctx context.Context, req *mcp.CallToolRequest, args any) (*mcp.CallToolResult, any, error) {
-	store := GetMemoStore()
-	if store == nil {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: "Error: memo store not initialized"}},
-			IsError: true,
-		}, nil, nil
-	}
-
-	count := store.Count()
-	if err := store.DeleteAllMemos(); err != nil {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Failed to delete all memos: %v", err)}},
-			IsError: true,
-		}, nil, nil
-	}
-
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("All memos deleted successfully (%d memos removed)", count)}},
-		IsError: false,
-	}, nil, nil
+	return textResult(result.String())
 }

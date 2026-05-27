@@ -46,7 +46,10 @@ This is a Go-based Model Context Protocol (MCP) server that provides Git read op
 1. **MCP Layer** (`mcp_server.go`, `mcp_tools_git.go`, `mcp_tools_memo.go`)
    - MCP server initialization with both stdio and HTTP transport support
    - Tool parameter definitions and handler registration
-   - 28 registered tools: repository info, cloning, branch listing, enhanced file operations, pattern-based search, README discovery, session configuration, batch operations, composite tools, cross-repository search, memo management (add/get/update/delete/list/delete-all)
+   - 19 registered tools:
+     - Git read (14): get_repository_info, pull_repository, list_branches, switch_branch, search_files, list_files, get_file_content, clone_repository, list_repositories, remove_repository, get_readme_files, list_commits, get_commit_diff, session, batch
+     - Memo CRUD (5): add_memo, get_memo, update_memo, delete_memo, list_memos
+   - search_files accepts a `repositories` array for cross-repo search; `session` and `batch` are unified multi-action tools (set/get/clear and clone/pull/status respectively)
 
 2. **Workspace Security Layer** (`workspace.go`)
    - `WorkspaceManager` enforces all operations within a specified workspace directory
@@ -93,8 +96,8 @@ Tools use consistent parameter naming:
 - Optional parameters use `omitempty` JSON tags
 - Automatic defaults:
   - `limit=20` (search), `limit=50` (list_files)
-  - `max_lines=100`, `start_line=1` (get_file_content)
-  - `show_line_numbers=true` (always enabled for AI-friendly output)
+  - `start_line=1`, default span 100 lines (get_file_content; configurable via `session.default_line_limit`)
+  - line numbers are always emitted on file content output
 
 ### Enhanced File Operations
 
@@ -137,22 +140,28 @@ Tools use consistent parameter naming:
 
 ### Session Configuration (`session_config.go`)
 
-Server-side session state management to reduce tool call overhead:
-- `set_session_config`: Set default values (repository, patterns, limits)
-- `get_session_config`: View current session configuration
-- `clear_session_config`: Reset to defaults
+Server-side session state management to reduce tool call overhead. Exposed
+as a single `session` tool with `action="set"|"get"|"clear"`:
+
+- `action="set"` stores defaults that subsequent tools pick up when their
+  matching parameter is omitted.
+- `action="get"` returns the current session state.
+- `action="clear"` resets everything.
 
 **Session-aware Parameters:**
 - `default_repository`: Used when no repository is specified
 - `default_include_patterns` / `default_exclude_patterns`: Default file patterns
-- `default_search_limit`, `default_list_files_limit`, `default_max_lines`, `default_commit_limit`
+- `default_search_limit`, `default_list_files_limit`, `default_line_limit`, `default_commit_limit`
 
 ### Batch Operations
 
-Execute operations on multiple repositories in a single call:
-- `batch_clone`: Clone multiple repositories at once
-- `batch_pull`: Pull all (or specified) repositories
-- `batch_status`: Get status of all (or specified) repositories
+The `batch` tool runs the same operation across multiple repos in one call.
+Choose the kind via `operation`:
+
+- `operation="clone"` with `urls=[...]` clones each URL.
+- `operation="pull"` updates listed repos, or all workspace repos when
+  `repositories` is empty.
+- `operation="status"` reports current branch and dirty flag.
 
 ### Repository Info Output
 
@@ -162,18 +171,12 @@ Execute operations on multiple repositories in a single call:
 - README content (always shown if available)
 - Optional: associated memos with `include_memos=true`
 
-### Composite Tools
-
-Combine frequently-used operations into single calls:
-- `explore_repository`: get_repository_info + list_files + get_readme_files
-- `setup_repository`: clone + get_repository_info + list_branches
-- `get_workspace_overview`: Summary of all repositories (branches, status, commits)
-
 ### Cross-Repository Search
 
-- `cross_repo_search`: Search across multiple (or all) repositories at once
-- Supports all search parameters (keywords, patterns, context lines)
-- Returns results grouped by repository
+`search_files` accepts a `repositories=[...]` array for searching multiple
+repos in one call. Leave it empty and supply `repository=name` for a single
+repo. All other parameters (keywords, patterns, context lines) apply the
+same way in both modes.
 
 ### Memo Management
 
@@ -193,7 +196,6 @@ Document memo system for persistent note-taking across sessions with repository 
 - `update_memo`: Update memo. Parameters: id (required), repository, title, content, tags
 - `delete_memo`: Delete a memo by ID
 - `list_memos`: Search/list memos. Parameters: repository (filter by repo), query (search title/content), tags, limit
-- `delete_all_memos`: Delete all memos (use with caution)
 
 **Repository Integration:**
 - `get_repository_info` with `include_memos=true` shows associated memos

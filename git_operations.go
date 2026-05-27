@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -135,7 +134,7 @@ func GetRepositoryStatus(repoPath string) (*RepositoryStatus, error) {
 	cmd.Dir = repoPath
 	output, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get git status: %v", err)
+		return nil, fmt.Errorf("failed to get git status: %w", err)
 	}
 
 	statusOutput := strings.TrimSpace(string(output))
@@ -162,7 +161,7 @@ func PullRepository(repoPath string) (string, error) {
 	cmd.Dir = repoPath
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return string(output), fmt.Errorf("git pull failed: %v", err)
+		return string(output), fmt.Errorf("git pull failed: %w", err)
 	}
 
 	return string(output), nil
@@ -189,7 +188,7 @@ func ListCommits(repoPath string, limit int) ([]Commit, error) {
 	cmd.Dir = repoPath
 	output, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("failed to list commits: %v", err)
+		return nil, fmt.Errorf("failed to list commits: %w", err)
 	}
 
 	var commits []Commit
@@ -232,7 +231,7 @@ func GetCommitDiff(repoPath, commitHash string) (string, error) {
 	cmd.Dir = repoPath
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return string(output), fmt.Errorf("git show failed for commit '%s': %v", commitHash, err)
+		return string(output), fmt.Errorf("git show failed for commit '%s': %w", commitHash, err)
 	}
 
 	return string(output), nil
@@ -255,7 +254,7 @@ func ListBranches(repoPath string) ([]Branch, error) {
 	cmd.Dir = repoPath
 	output, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("failed to list branches: %v", err)
+		return nil, fmt.Errorf("failed to list branches: %w", err)
 	}
 
 	var branches []Branch
@@ -303,7 +302,7 @@ func SwitchBranch(repoPath, branchName string) (string, error) {
 	cmd.Dir = repoPath
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return string(output), fmt.Errorf("failed to switch branch: %v", err)
+		return string(output), fmt.Errorf("failed to switch branch: %w", err)
 	}
 
 	return string(output), nil
@@ -383,12 +382,12 @@ func ListFiles(repoPath, dirPath string, recursive bool, includePatterns, exclud
 		})
 
 		if err != nil && err.Error() != "max results reached" {
-			return nil, fmt.Errorf("failed to walk directory: %v", err)
+			return nil, fmt.Errorf("failed to walk directory: %w", err)
 		}
 	} else {
 		entries, err := os.ReadDir(fullPath)
 		if err != nil {
-			return nil, fmt.Errorf("failed to read directory: %v", err)
+			return nil, fmt.Errorf("failed to read directory: %w", err)
 		}
 
 		for _, entry := range entries {
@@ -436,7 +435,7 @@ func ListFiles(repoPath, dirPath string, recursive bool, includePatterns, exclud
 func CloneRepository(repoURL, repoName string) (string, string, error) {
 	wm := GetWorkspaceManager()
 	if wm == nil {
-		return "", "", fmt.Errorf("workspace not initialized")
+		return "", "", ErrWorkspaceNotInitialized
 	}
 
 	// Extract repository name from URL if not provided
@@ -444,7 +443,7 @@ func CloneRepository(repoURL, repoName string) (string, string, error) {
 		var err error
 		repoName, err = extractRepoNameFromURL(repoURL)
 		if err != nil {
-			return "", "", fmt.Errorf("failed to extract repository name from URL: %v", err)
+			return "", "", fmt.Errorf("failed to extract repository name from URL: %w", err)
 		}
 	}
 
@@ -460,7 +459,7 @@ func CloneRepository(repoURL, repoName string) (string, string, error) {
 	cmd := exec.Command("git", "clone", repoURL, targetPath)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return string(output), repoName, fmt.Errorf("git clone failed: %v", err)
+		return string(output), repoName, fmt.Errorf("git clone failed: %w", err)
 	}
 
 	return string(output), repoName, nil
@@ -596,13 +595,19 @@ func GetFileStatistics(repoPath string, excludePatterns []string) (*FileStatisti
 	})
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to walk directory: %v", err)
+		return nil, fmt.Errorf("failed to walk directory: %w", err)
 	}
 
 	return stats, nil
 }
 
-// GetFileContent reads the content of a file
+// GetFileContent reads the content of a file, optionally limited to the
+// first maxLines lines (0 = unlimited). Long lines are supported without
+// the 64KB bufio.Scanner token limit: the file is loaded into memory and
+// split on '\n'.
+//
+// Output normalizes line endings: each returned line is followed by '\n',
+// regardless of whether the source file had a trailing newline.
 func GetFileContent(repoPath, filePath string, maxLines int) (string, error) {
 	// Validate workspace path
 	validPath, err := ValidateWorkspacePath(repoPath)
@@ -613,26 +618,25 @@ func GetFileContent(repoPath, filePath string, maxLines int) (string, error) {
 
 	fullPath := filepath.Join(repoPath, filePath)
 
-	file, err := os.Open(fullPath)
+	data, err := os.ReadFile(fullPath)
 	if err != nil {
-		return "", fmt.Errorf("failed to open file: %v", err)
+		return "", fmt.Errorf("failed to open file: %w", err)
 	}
-	defer file.Close()
+
+	lines := strings.Split(string(data), "\n")
+	if len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+
+	if maxLines > 0 && len(lines) > maxLines {
+		lines = lines[:maxLines]
+	}
 
 	var content strings.Builder
-	scanner := bufio.NewScanner(file)
-	lineCount := 0
-
-	for scanner.Scan() && (maxLines == 0 || lineCount < maxLines) {
-		content.WriteString(scanner.Text())
+	for _, line := range lines {
+		content.WriteString(line)
 		content.WriteString("\n")
-		lineCount++
 	}
-
-	if err := scanner.Err(); err != nil {
-		return "", fmt.Errorf("failed to read file: %v", err)
-	}
-
 	return content.String(), nil
 }
 
@@ -665,8 +669,13 @@ func GetMultipleFileContents(repoPath string, filePaths []string, maxLines int) 
 	return results, nil
 }
 
-// GetFileContentWithLineNumbers reads the content of a file with optional line numbers
-// Returns: content, totalLines, actualStartLine, actualEndLine, error
+// GetFileContentWithLineNumbers reads the content of a file with optional line numbers.
+// Returns: content, totalLines, actualStartLine, actualEndLine, error.
+//
+// Reads the file in a single pass and builds an index of newline positions, so
+// long lines (which would overflow bufio.Scanner's default 64KB token buffer)
+// are handled without error. The line span [startLine, startLine+maxLines) is
+// then sliced from the in-memory bytes.
 func GetFileContentWithLineNumbers(repoPath, filePath string, startLine, maxLines int, showLineNumbers bool) (string, int, int, int, error) {
 	// Validate workspace path
 	validPath, err := ValidateWorkspacePath(repoPath)
@@ -677,22 +686,20 @@ func GetFileContentWithLineNumbers(repoPath, filePath string, startLine, maxLine
 
 	fullPath := filepath.Join(repoPath, filePath)
 
-	// First pass: count total lines
-	file, err := os.Open(fullPath)
+	data, err := os.ReadFile(fullPath)
 	if err != nil {
-		return "", 0, 0, 0, fmt.Errorf("failed to open file: %v", err)
+		return "", 0, 0, 0, fmt.Errorf("failed to open file: %w", err)
 	}
 
-	totalLines := 0
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		totalLines++
+	// Split into lines without losing the (lack of) trailing newline. Using
+	// strings.Split on "\n" gives us len(lines) = (number of newlines) + 1,
+	// where a trailing newline produces an empty final element. We trim that
+	// to make totalLines match the human-visible line count.
+	lines := strings.Split(string(data), "\n")
+	if len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
 	}
-	file.Close()
-
-	if err := scanner.Err(); err != nil {
-		return "", 0, 0, 0, fmt.Errorf("failed to count lines: %v", err)
-	}
+	totalLines := len(lines)
 
 	// Normalize startLine
 	if startLine < 1 {
@@ -702,45 +709,22 @@ func GetFileContentWithLineNumbers(repoPath, filePath string, startLine, maxLine
 		return "", totalLines, startLine, startLine, nil
 	}
 
-	// Second pass: read content from startLine
-	file, err = os.Open(fullPath)
-	if err != nil {
-		return "", 0, 0, 0, fmt.Errorf("failed to open file: %v", err)
+	end := totalLines
+	if maxLines > 0 && startLine+maxLines-1 < end {
+		end = startLine + maxLines - 1
 	}
-	defer file.Close()
 
 	var content strings.Builder
-	scanner = bufio.NewScanner(file)
-	currentLine := 0
-	linesRead := 0
-
-	for scanner.Scan() {
-		currentLine++
-		if currentLine < startLine {
-			continue
-		}
-		if maxLines > 0 && linesRead >= maxLines {
-			break
-		}
-		linesRead++
+	for i := startLine - 1; i < end; i++ {
 		if showLineNumbers {
-			content.WriteString(fmt.Sprintf("%4d: %s\n", currentLine, scanner.Text()))
+			fmt.Fprintf(&content, "%4d: %s\n", i+1, lines[i])
 		} else {
-			content.WriteString(scanner.Text())
+			content.WriteString(lines[i])
 			content.WriteString("\n")
 		}
 	}
 
-	if err := scanner.Err(); err != nil {
-		return "", 0, 0, 0, fmt.Errorf("failed to read file: %v", err)
-	}
-
-	endLine := startLine + linesRead - 1
-	if linesRead == 0 {
-		endLine = startLine
-	}
-
-	return content.String(), totalLines, startLine, endLine, nil
+	return content.String(), totalLines, startLine, end, nil
 }
 
 // GetMultipleFileContentsWithLineNumbers reads the content of multiple files with optional line numbers
@@ -837,13 +821,13 @@ func GetReadmeFiles(repoPath string, recursive bool) ([]ReadmeFileInfo, error) {
 		})
 
 		if err != nil {
-			return nil, fmt.Errorf("failed to walk directory: %v", err)
+			return nil, fmt.Errorf("failed to walk directory: %w", err)
 		}
 	} else {
 		// Only search in root directory
 		entries, err := os.ReadDir(repoPath)
 		if err != nil {
-			return nil, fmt.Errorf("failed to read directory: %v", err)
+			return nil, fmt.Errorf("failed to read directory: %w", err)
 		}
 
 		for _, entry := range entries {
@@ -888,18 +872,6 @@ func isGitRepository(path string) bool {
 		return stat.IsDir()
 	}
 	return false
-}
-
-func getCommitCount(repoPath string) (int, error) {
-	cmd := exec.Command("git", "rev-list", "--all", "--count")
-	cmd.Dir = repoPath
-	output, err := cmd.Output()
-	if err != nil {
-		return 0, err
-	}
-
-	count, err := strconv.Atoi(strings.TrimSpace(string(output)))
-	return count, err
 }
 
 func getLastCommit(repoPath string) (time.Time, error) {
@@ -971,77 +943,6 @@ func findAndReadReadme(repoPath string) (string, error) {
 	}
 
 	return "", fmt.Errorf("no readme file found")
-}
-
-func filterResultsByKeywords(repoPath string, results []SearchResult, keywords []string) []SearchResult {
-	var filtered []SearchResult
-
-	for _, result := range results {
-		content, err := GetFileContent(repoPath, result.Path, 0)
-		if err != nil {
-			continue
-		}
-
-		contentLower := strings.ToLower(content)
-		allMatch := true
-
-		for _, keyword := range keywords {
-			if !strings.Contains(contentLower, strings.ToLower(keyword)) {
-				allMatch = false
-				break
-			}
-		}
-
-		if allMatch {
-			filtered = append(filtered, result)
-		}
-	}
-
-	return filtered
-}
-
-// mergeResultsWithOR searches for files containing any of the additional keywords (OR logic)
-func mergeResultsWithOR(repoPath string, existingResults []SearchResult, keywords []string) []SearchResult {
-	// Create a map to avoid duplicates
-	resultMap := make(map[string]SearchResult)
-
-	// Add existing results
-	for _, result := range existingResults {
-		resultMap[result.Path] = result
-	}
-
-	// Search for each additional keyword separately
-	for _, keyword := range keywords {
-		args := []string{"grep", "-l", "-r", "--exclude-dir=.git", keyword}
-		cmd := exec.Command("git", args...)
-		cmd.Dir = repoPath
-		output, err := cmd.Output()
-
-		if err != nil {
-			// No matches found is not an error for OR logic
-			if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
-				continue
-			}
-			// Continue with other keywords even if one fails
-			continue
-		}
-
-		scanner := bufio.NewScanner(strings.NewReader(string(output)))
-		for scanner.Scan() {
-			line := strings.TrimSpace(scanner.Text())
-			if line != "" {
-				resultMap[line] = SearchResult{Path: line}
-			}
-		}
-	}
-
-	// Convert map back to slice
-	var results []SearchResult
-	for _, result := range resultMap {
-		results = append(results, result)
-	}
-
-	return results
 }
 
 // File pattern matching helper functions

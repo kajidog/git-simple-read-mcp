@@ -17,7 +17,7 @@ type SessionConfig struct {
 	// Default limits
 	DefaultSearchLimit    int `json:"default_search_limit,omitempty"`
 	DefaultListFilesLimit int `json:"default_list_files_limit,omitempty"`
-	DefaultMaxLines       int `json:"default_max_lines,omitempty"`
+	DefaultLineLimit       int `json:"default_line_limit,omitempty"`
 	DefaultCommitLimit    int `json:"default_commit_limit,omitempty"`
 }
 
@@ -49,8 +49,8 @@ func SetSessionConfigValues(config *SessionConfig) {
 	if config.DefaultListFilesLimit > 0 {
 		globalSessionConfig.DefaultListFilesLimit = config.DefaultListFilesLimit
 	}
-	if config.DefaultMaxLines > 0 {
-		globalSessionConfig.DefaultMaxLines = config.DefaultMaxLines
+	if config.DefaultLineLimit > 0 {
+		globalSessionConfig.DefaultLineLimit = config.DefaultLineLimit
 	}
 	if config.DefaultCommitLimit > 0 {
 		globalSessionConfig.DefaultCommitLimit = config.DefaultCommitLimit
@@ -67,7 +67,7 @@ func ClearSessionConfig() {
 	globalSessionConfig.DefaultExcludePatterns = nil
 	globalSessionConfig.DefaultSearchLimit = 0
 	globalSessionConfig.DefaultListFilesLimit = 0
-	globalSessionConfig.DefaultMaxLines = 0
+	globalSessionConfig.DefaultLineLimit = 0
 	globalSessionConfig.DefaultCommitLimit = 0
 }
 
@@ -127,15 +127,17 @@ func (sc *SessionConfig) GetListFilesLimit(provided int) int {
 	return 50 // Default fallback
 }
 
-// GetMaxLines returns the provided max lines or the default if zero
-func (sc *SessionConfig) GetMaxLines(provided int) int {
+// GetLineLimit returns the provided per-call line limit, or the session
+// default if zero, or 100 as a final fallback. Used by get_file_content to
+// determine the default span when only start_line is supplied.
+func (sc *SessionConfig) GetLineLimit(provided int) int {
 	if provided > 0 {
 		return provided
 	}
 	sc.mu.RLock()
 	defer sc.mu.RUnlock()
-	if sc.DefaultMaxLines > 0 {
-		return sc.DefaultMaxLines
+	if sc.DefaultLineLimit > 0 {
+		return sc.DefaultLineLimit
 	}
 	return 100 // Default fallback
 }
@@ -175,8 +177,8 @@ func (sc *SessionConfig) ToMap() map[string]any {
 	if sc.DefaultListFilesLimit > 0 {
 		result["default_list_files_limit"] = sc.DefaultListFilesLimit
 	}
-	if sc.DefaultMaxLines > 0 {
-		result["default_max_lines"] = sc.DefaultMaxLines
+	if sc.DefaultLineLimit > 0 {
+		result["default_line_limit"] = sc.DefaultLineLimit
 	}
 	if sc.DefaultCommitLimit > 0 {
 		result["default_commit_limit"] = sc.DefaultCommitLimit
@@ -195,6 +197,6 @@ func (sc *SessionConfig) IsEmpty() bool {
 		len(sc.DefaultExcludePatterns) == 0 &&
 		sc.DefaultSearchLimit == 0 &&
 		sc.DefaultListFilesLimit == 0 &&
-		sc.DefaultMaxLines == 0 &&
+		sc.DefaultLineLimit == 0 &&
 		sc.DefaultCommitLimit == 0
 }
